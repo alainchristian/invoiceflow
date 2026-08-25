@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/db.js";
-import { stripe } from "../../lib/stripe.js";
+import { requireStripe, StripeNotConfiguredError, sendStripeNotConfigured } from "../../lib/stripe.js";
 import { requireAuth, requireOrgMember, requireRole, type AuthedRequest } from "../../middleware/auth.js";
 import { PLANS, planRank, getStripePriceId } from "./plans.js";
 
@@ -74,7 +74,7 @@ router.post("/checkout", requireRole("OWNER", "ADMIN"), async (req: AuthedReques
         include: { user: true },
         orderBy: { createdAt: "asc" },
       });
-      const customer = await stripe.customers.create({
+      const customer = await requireStripe().customers.create({
         email: owner?.user.email,
         name: organization.name,
         metadata: { organizationId: organization.id },
@@ -87,7 +87,7 @@ router.post("/checkout", requireRole("OWNER", "ADMIN"), async (req: AuthedReques
     if (!priceId) return res.status(500).json({ error: "This plan isn't configured yet. Contact support." });
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const session = await stripe.checkout.sessions.create({
+    const session = await requireStripe().checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -99,6 +99,7 @@ router.post("/checkout", requireRole("OWNER", "ADMIN"), async (req: AuthedReques
 
     res.json({ url: session.url });
   } catch (err) {
+    if (err instanceof StripeNotConfiguredError) return sendStripeNotConfigured(res);
     next(err);
   }
 });
@@ -111,13 +112,14 @@ router.post("/portal", requireRole("OWNER", "ADMIN"), async (req: AuthedRequest,
     }
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const session = await stripe.billingPortal.sessions.create({
+    const session = await requireStripe().billingPortal.sessions.create({
       customer: organization.stripeCustomerId,
       return_url: `${frontendUrl}/app/settings/billing`,
     });
 
     res.json({ url: session.url });
   } catch (err) {
+    if (err instanceof StripeNotConfiguredError) return sendStripeNotConfigured(res);
     next(err);
   }
 });

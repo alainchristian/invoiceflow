@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/db.js";
-import { stripe } from "../../lib/stripe.js";
+import { requireStripe, StripeNotConfiguredError, sendStripeNotConfigured } from "../../lib/stripe.js";
 import { requireAuth, requireOrgMember, requireRole, type AuthedRequest } from "../../middleware/auth.js";
-import { computeInvoiceTotals, round2 } from "./invoice-math.js";
+import { computeInvoiceTotals, round2, Decimal } from "./invoice-math.js";
 import { nextInvoiceNumber } from "./invoice-number.js";
 import { renderDocumentPdfToBuffer } from "./renderInvoicePdf.js";
 import { toStripeAmount } from "./currency.js";
@@ -11,6 +11,7 @@ import { createInvoiceReminderNotifications } from "../reminders/notify.js";
 import { assertInvoiceQuotaAvailable, QuotaExceededError } from "../billing/limits.js";
 import { sendEmail } from "../../lib/email.js";
 import { invoiceEmail, paymentReminderEmail } from "../email/templates.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 const publicRouter = Router();
@@ -47,7 +48,7 @@ router.get("/", async (req: AuthedRequest, res, next) => {
       prisma.invoice.count({ where }),
     ]);
 
-    res.json({ invoices, total, page: Number(page), pageSize: take });
+    res.json({ invoices: toApiNumbers(invoices), total, page: Number(page), pageSize: take });
   } catch (err) {
     next(err);
   }
@@ -60,7 +61,7 @@ router.get("/:id", async (req: AuthedRequest, res, next) => {
       include: INCLUDE,
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
-    res.json(invoice);
+    res.json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
   }
@@ -147,7 +148,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.status(201).json(invoice);
+    res.status(201).json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
   }
@@ -213,7 +214,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.json(invoice);
+    res.json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
   }
@@ -278,7 +279,7 @@ router.post("/:id/duplicate", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.status(201).json(duplicate);
+    res.status(201).json(toApiNumbers(duplicate));
   } catch (err) {
     next(err);
   }
@@ -299,8 +300,9 @@ router.post("/:id/send", async (req: AuthedRequest, res, next) => {
     }
 
     try {
-      const pdf = await renderDocumentPdfToBuffer({ ...existing, status: "SENT" });
-      const { subject, html } = invoiceEmail(existing.organization, existing, existing.customer);
+      const numericExisting = toApiNumbers(existing);
+      const pdf = await renderDocumentPdfToBuffer({ ...numericExisting, status: "SENT" });
+      const { subject, html } = invoiceEmail(existing.organization, numericExisting, existing.customer);
       await sendEmail({
         to: existing.customer.email,
         subject,
@@ -312,7 +314,7 @@ router.post("/:id/send", async (req: AuthedRequest, res, next) => {
     }
 
     const invoice = await prisma.invoice.update({ where: { id: existing.id }, data: { status: "SENT" } });
-    res.json(invoice);
+    res.json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
   }
@@ -335,7 +337,7 @@ router.post("/:id/remind", async (req: AuthedRequest, res, next) => {
     let emailSent = false;
     if (existing.customer.email) {
       try {
-        const { subject, html } = paymentReminderEmail(existing.organization, existing, existing.customer);
+        const { subject, html } = paymentReminderEmail(existing.organization, toApiNumbers(existing), existing.customer);
         await sendEmail({ to: existing.customer.email, subject, html });
         emailSent = true;
       } catch (err) {
@@ -349,7 +351,7 @@ router.post("/:id/remind", async (req: AuthedRequest, res, next) => {
       return createInvoiceReminderNotifications(tx, existing, now);
     });
 
-    res.json({ invoice: { ...existing, lastReminderSentAt: now }, notifiedCount, emailSent });
+    res.json({ invoice: toApiNumbers({ ...existing, lastReminderSentAt: now }), notifiedCount, emailSent });
   } catch (err) {
     next(err);
   }
@@ -375,7 +377,7 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
         amountPaid: parsed.data.status === "PAID" ? existing.total : existing.amountPaid,
       },
     });
-    res.json(invoice);
+    res.json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
   }
@@ -398,7 +400,7 @@ router.post("/:id/payments", async (req: AuthedRequest, res, next) => {
     });
     if (!existing) return res.status(404).json({ error: "Invoice not found" });
 
-    const newAmountPaid = existing.amountPaid + parsed.data.amount;
+    const newAmountPaid = existing.amountPaid.plus(parsed.data.amount);
     const [payment, invoice] = await prisma.$transaction([
       prisma.payment.create({
         data: {
@@ -413,14 +415,14 @@ router.post("/:id/payments", async (req: AuthedRequest, res, next) => {
         where: { id: existing.id },
         data: {
           amountPaid: newAmountPaid,
-          status: newAmountPaid >= existing.total ? "PAID" : existing.status,
-          paidAt: newAmountPaid >= existing.total ? new Date() : existing.paidAt,
+          status: newAmountPaid.greaterThanOrEqualTo(existing.total) ? "PAID" : existing.status,
+          paidAt: newAmountPaid.greaterThanOrEqualTo(existing.total) ? new Date() : existing.paidAt,
         },
         include: INCLUDE,
       }),
     ]);
 
-    res.status(201).json({ payment, invoice });
+    res.status(201).json(toApiNumbers({ payment, invoice }));
   } catch (err) {
     next(err);
   }
@@ -443,7 +445,7 @@ router.post("/:id/refunds", async (req: AuthedRequest, res, next) => {
     if (!existing) return res.status(404).json({ error: "Invoice not found" });
 
     const amount = round2(parsed.data.amount);
-    if (amount > existing.amountPaid) {
+    if (amount.greaterThan(existing.amountPaid)) {
       return res.status(400).json({ error: "Refund amount cannot exceed the amount paid." });
     }
 
@@ -452,24 +454,25 @@ router.post("/:id/refunds", async (req: AuthedRequest, res, next) => {
     // manual/ledger-only adjustment (cash/bank-transfer refunds, or an amount
     // that doesn't map cleanly onto one original charge).
     const stripePayment = existing.payments.find(
-      (p) => p.provider === "stripe" && p.providerRef && p.amount >= amount
+      (p) => p.provider === "stripe" && p.providerRef && p.amount.greaterThanOrEqualTo(amount)
     );
     let stripeRefundId: string | undefined;
     if (stripePayment?.providerRef) {
       try {
-        const refund = await stripe.refunds.create({
+        const refund = await requireStripe().refunds.create({
           payment_intent: stripePayment.providerRef,
-          amount: toStripeAmount(amount, existing.currency),
+          amount: toStripeAmount(amount.toNumber(), existing.currency),
         });
         stripeRefundId = refund.id;
       } catch (err: any) {
+        if (err instanceof StripeNotConfiguredError) return sendStripeNotConfigured(res);
         return res.status(502).json({ error: err.message || "Stripe refund failed" });
       }
     }
 
     const now = new Date();
-    const newAmountPaid = round2(existing.amountPaid - amount);
-    const stillFullyPaid = newAmountPaid >= existing.total;
+    const newAmountPaid = round2(existing.amountPaid.minus(amount));
+    const stillFullyPaid = newAmountPaid.greaterThanOrEqualTo(existing.total);
     const newStatus =
       existing.status === "PAID" && !stillFullyPaid ? (existing.dueDate < now ? "OVERDUE" : "SENT") : existing.status;
 
@@ -496,7 +499,7 @@ router.post("/:id/refunds", async (req: AuthedRequest, res, next) => {
       }),
     ]);
 
-    res.status(201).json({ payment: refundPayment, invoice });
+    res.status(201).json(toApiNumbers({ payment: refundPayment, invoice }));
   } catch (err) {
     next(err);
   }
@@ -510,7 +513,7 @@ router.get("/:id/pdf", async (req: AuthedRequest, res) => {
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
 
-    const buffer = await renderDocumentPdfToBuffer(invoice);
+    const buffer = await renderDocumentPdfToBuffer(toApiNumbers(invoice));
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="invoice-${invoice.number}.pdf"`);
     res.send(buffer);
@@ -537,7 +540,7 @@ publicRouter.get("/:token", async (req, res, next) => {
       if (invoice.status === "SENT") invoice.status = "VIEWED";
     }
 
-    res.json(invoice);
+    res.json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
   }
@@ -551,7 +554,7 @@ publicRouter.get("/:token/pdf", async (req, res) => {
     });
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
 
-    const buffer = await renderDocumentPdfToBuffer(invoice);
+    const buffer = await renderDocumentPdfToBuffer(toApiNumbers(invoice));
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="invoice-${invoice.number}.pdf"`);
     res.send(buffer);
@@ -575,8 +578,8 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
       return res.status(400).json({ error: "This invoice has been cancelled." });
     }
 
-    const balanceDue = round2(invoice.total - invoice.amountPaid);
-    if (balanceDue <= 0) {
+    const balanceDue = round2(invoice.total.minus(invoice.amountPaid));
+    if (balanceDue.lessThanOrEqualTo(0)) {
       return res.status(400).json({ error: "There is no outstanding balance on this invoice." });
     }
 
@@ -587,7 +590,7 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
     }
     const isPartial = amountProvided;
     const amount = isPartial ? round2(requestedAmountRaw) : balanceDue;
-    if (amount > balanceDue) {
+    if (amount.greaterThan(balanceDue)) {
       return res.status(400).json({ error: "Enter an amount between $0.01 and the balance due." });
     }
 
@@ -595,8 +598,8 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
     // customer-chosen partial amount always gets its own fresh session so we
     // never hand back a session for the wrong amount.
     if (!isPartial && invoice.stripeCheckoutSessionId) {
-      const existing = await stripe.checkout.sessions
-        .retrieve(invoice.stripeCheckoutSessionId)
+      const existing = await requireStripe()
+        .checkout.sessions.retrieve(invoice.stripeCheckoutSessionId)
         .catch(() => null);
       if (existing && existing.status === "open" && existing.url) {
         return res.json({ url: existing.url });
@@ -607,7 +610,7 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
     const productName = isPartial
       ? `Invoice ${invoice.number} — ${invoice.organization.name} (partial payment)`
       : `Invoice ${invoice.number} — ${invoice.organization.name}`;
-    const session = await stripe.checkout.sessions.create({
+    const session = await requireStripe().checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: invoice.customer.email || undefined,
@@ -615,7 +618,7 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
         {
           price_data: {
             currency: invoice.currency.toLowerCase(),
-            unit_amount: toStripeAmount(amount, invoice.currency),
+            unit_amount: toStripeAmount(amount.toNumber(), invoice.currency),
             product_data: { name: productName },
           },
           quantity: 1,
@@ -638,6 +641,7 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
 
     res.json({ url: session.url });
   } catch (err) {
+    if (err instanceof StripeNotConfiguredError) return sendStripeNotConfigured(res);
     next(err);
   }
 });

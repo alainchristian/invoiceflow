@@ -9,6 +9,7 @@ import { nextQuoteNumber } from "./quote-number.js";
 import { assertInvoiceQuotaAvailable, QuotaExceededError } from "../billing/limits.js";
 import { sendEmail } from "../../lib/email.js";
 import { quoteEmail } from "../email/templates.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 const publicRouter = Router();
@@ -55,7 +56,7 @@ router.get("/", async (req: AuthedRequest, res, next) => {
       prisma.quote.count({ where }),
     ]);
 
-    res.json({ quotes, total, page: Number(page), pageSize: take });
+    res.json({ quotes: toApiNumbers(quotes), total, page: Number(page), pageSize: take });
   } catch (err) {
     next(err);
   }
@@ -68,7 +69,7 @@ router.get("/:id", async (req: AuthedRequest, res, next) => {
       include: INCLUDE,
     });
     if (!quote) return res.status(404).json({ error: "Quote not found" });
-    res.json(await expireIfNeeded(quote));
+    res.json(toApiNumbers(await expireIfNeeded(quote)));
   } catch (err) {
     next(err);
   }
@@ -148,7 +149,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.status(201).json(quote);
+    res.status(201).json(toApiNumbers(quote));
   } catch (err) {
     next(err);
   }
@@ -214,7 +215,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.json(quote);
+    res.json(toApiNumbers(quote));
   } catch (err) {
     next(err);
   }
@@ -279,7 +280,7 @@ router.post("/:id/duplicate", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.status(201).json(duplicate);
+    res.status(201).json(toApiNumbers(duplicate));
   } catch (err) {
     next(err);
   }
@@ -300,15 +301,16 @@ router.post("/:id/send", async (req: AuthedRequest, res, next) => {
     }
 
     try {
+      const numericExisting = toApiNumbers(existing);
       const pdf = await renderDocumentPdfToBuffer({
-        ...existing,
+        ...numericExisting,
         status: "SENT",
         kind: "QUOTE",
         dueDate: existing.expiryDate,
         dueDateLabel: "VALID UNTIL",
         amountPaid: 0,
       });
-      const { subject, html } = quoteEmail(existing.organization, existing, existing.customer);
+      const { subject, html } = quoteEmail(existing.organization, numericExisting, existing.customer);
       await sendEmail({
         to: existing.customer.email,
         subject,
@@ -320,7 +322,7 @@ router.post("/:id/send", async (req: AuthedRequest, res, next) => {
     }
 
     const quote = await prisma.quote.update({ where: { id: existing.id }, data: { status: "SENT" } });
-    res.json(quote);
+    res.json(toApiNumbers(quote));
   } catch (err) {
     next(err);
   }
@@ -352,7 +354,7 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
         respondedAt: respondedNow ? new Date() : existing.respondedAt,
       },
     });
-    res.json(quote);
+    res.json(toApiNumbers(quote));
   } catch (err) {
     next(err);
   }
@@ -422,7 +424,7 @@ router.post("/:id/convert", async (req: AuthedRequest, res, next) => {
       return { quote, invoice };
     });
 
-    res.status(201).json(result);
+    res.status(201).json(toApiNumbers(result));
   } catch (err) {
     next(err);
   }
@@ -437,7 +439,7 @@ router.get("/:id/pdf", async (req: AuthedRequest, res) => {
     if (!quote) return res.status(404).json({ error: "Quote not found" });
 
     const buffer = await renderDocumentPdfToBuffer({
-      ...quote,
+      ...toApiNumbers(quote),
       kind: "QUOTE",
       dueDate: quote.expiryDate,
       dueDateLabel: "VALID UNTIL",
@@ -471,7 +473,7 @@ publicRouter.get("/:token", async (req, res, next) => {
       if (quote.status === "SENT") quote.status = "VIEWED";
     }
 
-    res.json(quote);
+    res.json(toApiNumbers(quote));
   } catch (err) {
     next(err);
   }
@@ -487,7 +489,7 @@ publicRouter.get("/:token/pdf", async (req, res) => {
     quote = await expireIfNeeded(quote);
 
     const buffer = await renderDocumentPdfToBuffer({
-      ...quote,
+      ...toApiNumbers(quote),
       kind: "QUOTE",
       dueDate: quote.expiryDate,
       dueDateLabel: "VALID UNTIL",
@@ -526,7 +528,7 @@ publicRouter.post("/:token/respond", async (req, res, next) => {
       include: PUBLIC_INCLUDE,
     });
 
-    res.json(updated);
+    res.json(toApiNumbers(updated));
   } catch (err) {
     next(err);
   }

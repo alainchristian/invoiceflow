@@ -1,5 +1,11 @@
 import PDFDocument from "pdfkit";
-import { round2 } from "./invoice-math.js";
+
+// PDF rendering always receives plain numbers (every caller converts Decimal
+// fields via toApiNumbers() before calling renderDocumentPdfToBuffer -- see
+// serialize.ts), so this uses plain float rounding rather than invoice-math's
+// Decimal-returning round2. Fine for display purposes: the persisted totals
+// were already computed precisely and rounded server-side before this ever runs.
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 interface PdfDocumentData {
   kind?: "INVOICE" | "QUOTE" | "CREDIT NOTE" | "STATEMENT";

@@ -12,6 +12,8 @@ import { AdminLayout } from "@/components/layout/AdminLayout";
 import Home from "@/pages/marketing/Home";
 import Login from "@/pages/auth/Login";
 import Register from "@/pages/auth/Register";
+import ForgotPassword from "@/pages/auth/ForgotPassword";
+import ResetPassword from "@/pages/auth/ResetPassword";
 import PublicInvoicePage from "@/pages/PublicInvoice";
 import PublicQuotePage from "@/pages/PublicQuote";
 import Dashboard from "@/pages/app/Dashboard";
@@ -62,6 +64,8 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/i/:token" element={<PublicInvoicePage />} />
                 <Route path="/q/:token" element={<PublicQuotePage />} />
 

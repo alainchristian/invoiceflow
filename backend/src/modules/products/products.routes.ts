@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/db.js";
 import { requireAuth, requireOrgMember, type AuthedRequest } from "../../middleware/auth.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 router.use(requireAuth, requireOrgMember);
@@ -12,7 +13,7 @@ router.get("/", async (req: AuthedRequest, res, next) => {
       where: { organizationId: req.organizationId },
       orderBy: { createdAt: "desc" },
     });
-    res.json(products);
+    res.json(toApiNumbers(products));
   } catch (err) {
     next(err);
   }
@@ -36,7 +37,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
     const product = await prisma.product.create({
       data: { ...parsed.data, organizationId: req.organizationId as string },
     });
-    res.status(201).json(product);
+    res.status(201).json(toApiNumbers(product));
   } catch (err) {
     next(err);
   }
@@ -53,7 +54,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
     if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
     const product = await prisma.product.update({ where: { id: existing.id }, data: parsed.data });
-    res.json(product);
+    res.json(toApiNumbers(product));
   } catch (err) {
     next(err);
   }

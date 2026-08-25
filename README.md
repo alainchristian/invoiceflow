@@ -90,6 +90,34 @@ per restart and doesn't have that problem.
 
 Verify with `GET http://localhost:4000/health` → `{ "status": "ok" }`.
 
+**Breaking change (2026-08-25)**: every monetary column (`Invoice.total`,
+`Payment.amount`, etc.) was migrated from `Float` to `Decimal(14,2)` to
+eliminate binary floating-point rounding error in tax/discount math. If you
+have an existing local database, run `npx prisma migrate deploy` to pick up
+migration `20260825090405_convert_money_fields_to_decimal` — it's a lossless
+in-place cast, no data is lost. The API still returns plain JSON numbers (not
+strings) for money fields; conversion happens server-side via
+`backend/src/lib/serialize.ts`.
+
+### Running tests
+
+The backend has a Vitest suite (`invoice-math`, multi-tenant isolation, Stripe
+webhook idempotency). It needs its own **disposable** database — never point
+it at the same `DATABASE_URL` as `.env`, since tests create and delete real
+rows.
+
+```bash
+cd backend
+# 1. Provision a separate database -- e.g. a second Neon branch/project.
+cp .env.test.example .env.test   # fill in the disposable DATABASE_URL
+npx prisma migrate deploy         # apply the schema to it (reads .env.test)
+npm test
+```
+
+`src/test/setup.ts` loads `.env.test` before anything else and fails loudly
+if `DATABASE_URL` isn't set from it, specifically to prevent a missing
+`.env.test` from silently falling back to your real dev database.
+
 ### Frontend
 
 ```bash

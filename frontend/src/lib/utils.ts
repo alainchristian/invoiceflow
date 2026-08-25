@@ -6,7 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+  // Defensive coercion: the API always sends money fields as numbers, but this
+  // guards against a future route accidentally leaking a Decimal-as-string.
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(amount));
 }
 
 export function formatDate(date: string | Date) {

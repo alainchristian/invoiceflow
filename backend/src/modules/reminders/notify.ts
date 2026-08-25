@@ -21,7 +21,7 @@ export async function createInvoiceReminderNotifications(
   });
   if (members.length === 0) return 0;
 
-  const amountDue = round2(invoice.total - invoice.amountPaid);
+  const amountDue = round2(invoice.total.minus(invoice.amountPaid)).toNumber();
   const isOverdue = invoice.dueDate < now;
   const title = isOverdue ? `Invoice ${invoice.number} is overdue` : `Reminder: invoice ${invoice.number} is due soon`;
   const message = `${invoice.customer.name} owes ${money(amountDue, invoice.currency)} on invoice ${invoice.number}, due ${invoice.dueDate.toLocaleDateString()}.`;

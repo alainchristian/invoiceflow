@@ -6,6 +6,7 @@ import { renderDocumentPdfToBuffer } from "../invoices/renderInvoicePdf.js";
 import { hasInvoiceQuotaAvailable } from "../billing/limits.js";
 import { sendEmail } from "../../lib/email.js";
 import { invoiceEmail } from "../email/templates.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const POLL_INTERVAL_MS = 60 * 60 * 1000; // hourly
 
@@ -97,8 +98,9 @@ export async function sendRecurringInvoiceEmailIfNeeded(
 ): Promise<void> {
   if (invoice.status !== "SENT" || !invoice.customer.email) return;
   try {
-    const pdf = await renderDocumentPdfToBuffer({ ...invoice, status: "SENT" });
-    const { subject, html } = invoiceEmail(invoice.organization, invoice, invoice.customer);
+    const numericInvoice = toApiNumbers(invoice);
+    const pdf = await renderDocumentPdfToBuffer({ ...numericInvoice, status: "SENT" });
+    const { subject, html } = invoiceEmail(invoice.organization, numericInvoice, invoice.customer);
     await sendEmail({
       to: invoice.customer.email,
       subject,

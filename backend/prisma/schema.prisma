@@ -98,15 +98,28 @@ enum StatementRecipients {
 }
 
 model User {
-  id             String   @id @default(uuid())
-  email          String   @unique
-  passwordHash   String
-  name           String
-  platformRole   PlatformRole?
-  lastLoginAt    DateTime?
-  createdAt      DateTime @default(now())
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  name         String
+  platformRole PlatformRole?
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
 
-  memberships OrganizationMember[]
+  memberships         OrganizationMember[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // A tenant. Every business-owned record hangs off an Organization, never a User directly.
@@ -118,26 +131,26 @@ model Organization {
 
   // Branding / invoice defaults
   logoUrl             String?
-  brandColor          String?  @default("#4f46e5")
+  brandColor          String? @default("#4f46e5")
   address             String?
   phone               String?
   email               String?
   taxId               String?
-  invoicePrefix       String?  @default("INV")
-  nextInvoiceSeq      Int      @default(1)
-  quotePrefix         String?  @default("QUO")
-  nextQuoteSeq        Int      @default(1)
-  creditNotePrefix    String?  @default("CN")
-  nextCreditNoteSeq   Int      @default(1)
-  defaultCurrency     String?  @default("USD")
-  defaultTaxRate      Float    @default(0)
+  invoicePrefix       String? @default("INV")
+  nextInvoiceSeq      Int     @default(1)
+  quotePrefix         String? @default("QUO")
+  nextQuoteSeq        Int     @default(1)
+  creditNotePrefix    String? @default("CN")
+  nextCreditNoteSeq   Int     @default(1)
+  defaultCurrency     String? @default("USD")
+  defaultTaxRate      Float   @default(0)
   defaultPaymentTerms String?
   defaultNotes        String?
 
   // Automated customer account statements
-  statementsEnabled      Boolean              @default(false)
-  statementFrequencyDays Int                  @default(30)
-  statementRecipients    StatementRecipients  @default(OVERDUE_ONLY)
+  statementsEnabled      Boolean             @default(false)
+  statementFrequencyDays Int                 @default(30)
+  statementRecipients    StatementRecipients @default(OVERDUE_ONLY)
   nextStatementRunAt     DateTime?
 
   // Subscription billing (ServicePilot charging this tenant, NOT invoice payments)
@@ -148,9 +161,9 @@ model Organization {
   currentPeriodEnd     DateTime?
 
   // Platform-admin controls (ServicePilot staff managing tenants, not billing)
-  suspended         Boolean   @default(false)
-  suspendedAt       DateTime?
-  suspendedReason   String?
+  suspended       Boolean   @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?
 
   members           OrganizationMember[]
   customers         Customer[]
@@ -162,9 +175,9 @@ model Organization {
 }
 
 model OrganizationMember {
-  id             String     @id @default(uuid())
-  role           MemberRole @default(MEMBER)
-  createdAt      DateTime   @default(now())
+  id        String     @id @default(uuid())
+  role      MemberRole @default(MEMBER)
+  createdAt DateTime   @default(now())
 
   userId         String
   user           User         @relation(fields: [userId], references: [id])
@@ -202,7 +215,7 @@ model Product {
   name         String
   description  String?
   type         ProductType @default(SERVICE)
-  defaultPrice Float       @default(0)
+  defaultPrice Decimal     @default(0) @db.Decimal(14, 2)
   taxRate      Float       @default(0)
   sku          String?
   active       Boolean     @default(true)
@@ -215,30 +228,30 @@ model Product {
 }
 
 model Invoice {
-  id          String        @id @default(uuid())
-  number      String
-  issueDate   DateTime      @default(now())
-  dueDate     DateTime
-  currency    String        @default("USD")
-  status      InvoiceStatus @default(DRAFT)
-  subtotal    Float
-  discount    Float         @default(0)
+  id                   String              @id @default(uuid())
+  number               String
+  issueDate            DateTime            @default(now())
+  dueDate              DateTime
+  currency             String              @default("USD")
+  status               InvoiceStatus       @default(DRAFT)
+  subtotal             Decimal             @db.Decimal(14, 2)
+  discount             Decimal             @default(0) @db.Decimal(14, 2)
   invoiceDiscountType  InvoiceDiscountType @default(FLAT)
-  invoiceDiscountValue Float               @default(0)
-  taxTotal    Float         @default(0)
-  total       Float
-  amountPaid  Float         @default(0)
-  poNumber    String?
-  notes       String?
-  terms       String?
-  publicToken String        @unique @default(uuid())
-  viewedAt    DateTime?
-  paidAt      DateTime?
-  lastReminderSentAt DateTime?
+  invoiceDiscountValue Decimal             @default(0) @db.Decimal(14, 2)
+  taxTotal             Decimal             @default(0) @db.Decimal(14, 2)
+  total                Decimal             @db.Decimal(14, 2)
+  amountPaid           Decimal             @default(0) @db.Decimal(14, 2)
+  poNumber             String?
+  notes                String?
+  terms                String?
+  publicToken          String              @unique @default(uuid())
+  viewedAt             DateTime?
+  paidAt               DateTime?
+  lastReminderSentAt   DateTime?
 
   stripeCheckoutSessionId String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -265,10 +278,10 @@ model InvoiceItem {
   id          String  @id @default(uuid())
   description String
   quantity    Float   @default(1)
-  unitPrice   Float
+  unitPrice   Decimal @db.Decimal(14, 2)
   taxRate     Float   @default(0)
-  discount    Float   @default(0)
-  total       Float
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
   sortOrder   Int     @default(0)
 
   invoiceId String
@@ -295,26 +308,26 @@ model Notification {
 }
 
 model Quote {
-  id          String      @id @default(uuid())
-  number      String
-  issueDate   DateTime    @default(now())
-  expiryDate  DateTime?
-  currency    String      @default("USD")
-  status      QuoteStatus @default(DRAFT)
-  subtotal    Float
-  discount    Float       @default(0)
+  id                   String              @id @default(uuid())
+  number               String
+  issueDate            DateTime            @default(now())
+  expiryDate           DateTime?
+  currency             String              @default("USD")
+  status               QuoteStatus         @default(DRAFT)
+  subtotal             Decimal             @db.Decimal(14, 2)
+  discount             Decimal             @default(0) @db.Decimal(14, 2)
   invoiceDiscountType  InvoiceDiscountType @default(FLAT)
-  invoiceDiscountValue Float               @default(0)
-  taxTotal    Float       @default(0)
-  total       Float
-  poNumber    String?
-  notes       String?
-  terms       String?
-  publicToken String      @unique @default(uuid())
-  viewedAt    DateTime?
-  respondedAt DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  invoiceDiscountValue Decimal             @default(0) @db.Decimal(14, 2)
+  taxTotal             Decimal             @default(0) @db.Decimal(14, 2)
+  total                Decimal             @db.Decimal(14, 2)
+  poNumber             String?
+  notes                String?
+  terms                String?
+  publicToken          String              @unique @default(uuid())
+  viewedAt             DateTime?
+  respondedAt          DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -332,34 +345,34 @@ model Quote {
 }
 
 model QuoteItem {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   description String
-  quantity    Float  @default(1)
-  unitPrice   Float
-  taxRate     Float  @default(0)
-  discount    Float  @default(0)
-  total       Float
-  sortOrder   Int    @default(0)
+  quantity    Float   @default(1)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  taxRate     Float   @default(0)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+  sortOrder   Int     @default(0)
 
   quoteId String
   quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 }
 
 model RecurringInvoice {
-  id          String             @id @default(uuid())
-  frequency   RecurringFrequency
-  status      RecurringStatus    @default(ACTIVE)
-  currency    String             @default("USD")
-  dueInDays   Int                @default(14)
-  generateAsDraft Boolean        @default(false)
-  notes       String?
-  terms       String?
-  startDate   DateTime
-  nextRunDate DateTime
-  endDate     DateTime?
-  lastRunAt   DateTime?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id              String             @id @default(uuid())
+  frequency       RecurringFrequency
+  status          RecurringStatus    @default(ACTIVE)
+  currency        String             @default("USD")
+  dueInDays       Int                @default(14)
+  generateAsDraft Boolean            @default(false)
+  notes           String?
+  terms           String?
+  startDate       DateTime
+  nextRunDate     DateTime
+  endDate         DateTime?
+  lastRunAt       DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -375,13 +388,13 @@ model RecurringInvoice {
 }
 
 model RecurringInvoiceItem {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   description String
-  quantity    Float  @default(1)
-  unitPrice   Float
-  taxRate     Float  @default(0)
-  discount    Float  @default(0)
-  sortOrder   Int    @default(0)
+  quantity    Float   @default(1)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  taxRate     Float   @default(0)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  sortOrder   Int     @default(0)
 
   recurringInvoiceId String
   recurringInvoice   RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
@@ -389,7 +402,7 @@ model RecurringInvoiceItem {
 
 model Payment {
   id          String        @id @default(uuid())
-  amount      Float
+  amount      Decimal       @db.Decimal(14, 2)
   type        PaymentType   @default(PAYMENT)
   method      PaymentMethod @default(OTHER)
   paidAt      DateTime      @default(now())
@@ -403,19 +416,19 @@ model Payment {
 }
 
 model CreditNote {
-  id          String           @id @default(uuid())
-  number      String
-  issueDate   DateTime         @default(now())
-  currency    String           @default("USD")
-  status      CreditNoteStatus @default(DRAFT)
-  reason      String?
-  subtotal    Float
-  discount    Float            @default(0)
-  taxTotal    Float            @default(0)
-  total       Float
-  notes       String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id        String           @id @default(uuid())
+  number    String
+  issueDate DateTime         @default(now())
+  currency  String           @default("USD")
+  status    CreditNoteStatus @default(DRAFT)
+  reason    String?
+  subtotal  Decimal          @db.Decimal(14, 2)
+  discount  Decimal          @default(0) @db.Decimal(14, 2)
+  taxTotal  Decimal          @default(0) @db.Decimal(14, 2)
+  total     Decimal          @db.Decimal(14, 2)
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -433,14 +446,14 @@ model CreditNote {
 }
 
 model CreditNoteItem {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   description String
-  quantity    Float  @default(1)
-  unitPrice   Float
-  taxRate     Float  @default(0)
-  discount    Float  @default(0)
-  total       Float
-  sortOrder   Int    @default(0)
+  quantity    Float   @default(1)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  taxRate     Float   @default(0)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+  sortOrder   Int     @default(0)
 
   creditNoteId String
   creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)

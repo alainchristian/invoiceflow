@@ -72,6 +72,19 @@ export function platformMessageEmail(recipientName: string, subject: string, mes
   return { subject, html: layout({ name: "InvoiceFlow", brandColor: "#4f46e5" }, body) };
 }
 
+// Not org-branded -- the user may not have/remember which org they belong to
+// at reset time, so this mirrors platformMessageEmail's product-branded layout.
+export function passwordResetEmail(recipientName: string, resetUrl: string): EmailResult {
+  const org = { name: "InvoiceFlow", brandColor: "#4f46e5" };
+  const body = `
+    <p>Hi ${recipientName},</p>
+    <p>We received a request to reset your InvoiceFlow password. This link expires in 1 hour.</p>
+    ${payButton(resetUrl, org.brandColor, "Reset Password")}
+    <p style="color:#6b7280;font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
+  `;
+  return { subject: "Reset your InvoiceFlow password", html: layout(org, body) };
+}
+
 export function quoteEmail(
   org: OrgBranding,
   quote: { number: string; total: number; currency: string; expiryDate: Date | string | null; publicToken: string },

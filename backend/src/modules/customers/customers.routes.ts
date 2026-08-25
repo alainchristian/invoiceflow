@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/db.js";
 import { requireAuth, requireOrgMember, type AuthedRequest } from "../../middleware/auth.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 router.use(requireAuth, requireOrgMember);
@@ -13,11 +14,14 @@ router.get("/", async (req: AuthedRequest, res, next) => {
       orderBy: { createdAt: "desc" },
     });
 
-    const invoiceAggregates = await prisma.invoice.groupBy({
-      by: ["customerId", "status"],
-      where: { organizationId: req.organizationId },
-      _sum: { total: true, amountPaid: true },
-    });
+    const invoiceAggregates: { customerId: string; status: string; _sum: { total: number | null; amountPaid: number | null } }[] =
+      toApiNumbers(
+        await prisma.invoice.groupBy({
+          by: ["customerId", "status"],
+          where: { organizationId: req.organizationId },
+          _sum: { total: true, amountPaid: true },
+        })
+      );
 
     const summaryByCustomer = new Map<string, { totalInvoiced: number; outstanding: number; lastInvoice?: Date }>();
     for (const row of invoiceAggregates) {
@@ -50,7 +54,7 @@ router.get("/:id", async (req: AuthedRequest, res, next) => {
       },
     });
     if (!customer) return res.status(404).json({ error: "Customer not found" });
-    res.json(customer);
+    res.json(toApiNumbers(customer));
   } catch (err) {
     next(err);
   }

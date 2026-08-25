@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useSeo } from "@/hooks/useSeo";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +14,8 @@ export default function Login() {
   });
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = (location.state as { message?: string } | null)?.message;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -47,6 +49,9 @@ export default function Login() {
           <h1 className="mb-1 text-xl font-semibold text-fg">Welcome back</h1>
           <p className="mb-6 text-sm text-fg-secondary">Sign in to your account</p>
 
+          {successMessage && (
+            <div className="mb-4 rounded-lg bg-success-bg px-3 py-2 text-sm text-success">{successMessage}</div>
+          )}
           {error && (
             <div className="mb-4 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger">{error}</div>
           )}
@@ -57,7 +62,12 @@ export default function Login() {
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div>
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link to="/forgot-password" className="text-xs font-medium text-brand-600 hover:text-brand-700">
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"

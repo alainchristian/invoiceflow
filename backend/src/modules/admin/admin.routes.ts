@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma, Plan, PlatformRole } from "@prisma/client";
 import { prisma } from "../../lib/db.js";
-import { stripe } from "../../lib/stripe.js";
+import { requireStripe, StripeNotConfiguredError, sendStripeNotConfigured } from "../../lib/stripe.js";
 import { sendEmail } from "../../lib/email.js";
 import { platformMessageEmail } from "../email/templates.js";
 import { PLANS } from "../billing/plans.js";
@@ -226,7 +226,7 @@ async function getOrgActivityFeed(organizationId: string, opts: { type?: string;
 
   const items: FeedItem[] = [];
   for (const inv of invoices) {
-    items.push({ id: `invoice-${inv.id}`, type: "invoice_created", label: `Invoice ${inv.number} created`, amount: inv.total, currency: inv.currency, timestamp: inv.createdAt });
+    items.push({ id: `invoice-${inv.id}`, type: "invoice_created", label: `Invoice ${inv.number} created`, amount: inv.total.toNumber(), currency: inv.currency, timestamp: inv.createdAt });
     if (inv.paidAt) {
       items.push({ id: `invoice-paid-${inv.id}`, type: "invoice_paid", label: `Invoice ${inv.number} paid in full`, timestamp: inv.paidAt });
     }
@@ -237,7 +237,7 @@ async function getOrgActivityFeed(organizationId: string, opts: { type?: string;
       id: `payment-${p.id}`,
       type: isRefund ? "refund" : "payment_received",
       label: isRefund ? `Refund issued for invoice ${p.invoice.number}` : `Payment received for invoice ${p.invoice.number}`,
-      amount: p.amount,
+      amount: p.amount.toNumber(),
       currency: p.invoice.currency,
       timestamp: p.paidAt,
     });
@@ -470,8 +470,8 @@ router.get("/organizations/:id", requirePlatformRole(), async (req, res, next) =
       ...organization,
       status: deriveTenantStatus(organization),
       owner: owner ? { id: owner.user.id, name: owner.user.name, email: owner.user.email, joinedAt: owner.createdAt } : null,
-      totalInvoiced: invoiceTotals._sum.total ?? 0,
-      totalCollected: invoiceTotals._sum.amountPaid ?? 0,
+      totalInvoiced: invoiceTotals._sum.total?.toNumber() ?? 0,
+      totalCollected: invoiceTotals._sum.amountPaid?.toNumber() ?? 0,
       // What this tenant pays InvoiceFlow -- not to be confused with totalCollected
       // above, which is revenue the tenant has collected from ITS OWN customers.
       monthlyValue: planDef.priceMonthly,
@@ -510,7 +510,7 @@ router.get("/organizations/:id/billing-history", requirePlatformRole(), async (r
     if (!organization) return res.status(404).json({ error: "Organization not found" });
     if (!organization.stripeCustomerId) return res.json({ invoices: [] });
 
-    const invoices = await stripe.invoices.list({ customer: organization.stripeCustomerId, limit: 20 });
+    const invoices = await requireStripe().invoices.list({ customer: organization.stripeCustomerId, limit: 20 });
     res.json({
       invoices: invoices.data.map((inv) => ({
         id: inv.id,
@@ -522,6 +522,7 @@ router.get("/organizations/:id/billing-history", requirePlatformRole(), async (r
       })),
     });
   } catch (err) {
+    if (err instanceof StripeNotConfiguredError) return sendStripeNotConfigured(res);
     next(err);
   }
 });

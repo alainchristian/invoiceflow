@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../../lib/db.js";
 import { requireAuth, requireOrgMember, type AuthedRequest } from "../../middleware/auth.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 router.use(requireAuth, requireOrgMember);
@@ -16,7 +17,7 @@ router.get("/summary", async (req: AuthedRequest, res, next) => {
     const monthStart = startOfMonth(now);
     const prevMonthStart = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-    const [allInvoices, allPayments, recentInvoices] = await Promise.all([
+    const [allInvoicesRaw, allPaymentsRaw, recentInvoicesRaw] = await Promise.all([
       prisma.invoice.findMany({
         where: { organizationId },
         select: {
@@ -43,6 +44,13 @@ router.get("/summary", async (req: AuthedRequest, res, next) => {
         take: 8,
       }),
     ]);
+    // Converted once, right after the fetch, to plain numbers -- these are
+    // display/aggregation-only (never recomputed and written back), so native
+    // arithmetic below is safe and matches pre-Decimal behavior exactly.
+    const allInvoices: { id: string; total: number; amountPaid: number; status: string; createdAt: Date; dueDate: Date }[] =
+      toApiNumbers(allInvoicesRaw);
+    const allPayments: { amount: number; paidAt: Date }[] = toApiNumbers(allPaymentsRaw);
+    const recentInvoices = toApiNumbers(recentInvoicesRaw);
 
     const totalRevenue = allInvoices.reduce((sum, inv) => sum + inv.amountPaid, 0);
     const outstanding = allInvoices
@@ -105,7 +113,7 @@ router.get("/analytics", async (req: AuthedRequest, res, next) => {
 
     const now = new Date();
 
-    const [revenueByCustomerRows, customers, itemsByDescription, quotes] = await Promise.all([
+    const [revenueByCustomerRowsRaw, customers, itemsByDescriptionRaw, quotes] = await Promise.all([
       prisma.invoice.groupBy({
         by: ["customerId"],
         where: { organizationId },
@@ -121,6 +129,10 @@ router.get("/analytics", async (req: AuthedRequest, res, next) => {
         select: { status: true, createdAt: true },
       }),
     ]);
+    // Converted once, right after the fetch -- see the /summary handler above.
+    const revenueByCustomerRows: { customerId: string; _sum: { amountPaid: number | null } }[] =
+      toApiNumbers(revenueByCustomerRowsRaw);
+    const itemsByDescription: { description: string; total: number }[] = toApiNumbers(itemsByDescriptionRaw);
 
     const customerNames = new Map(customers.map((c) => [c.id, c.name]));
     const topCustomers = revenueByCustomerRows

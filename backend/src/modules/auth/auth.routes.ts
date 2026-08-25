@@ -1,12 +1,35 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../../lib/db.js";
 import { slugify } from "../../lib/slug.js";
 import { requireAuth, type AuthedRequest } from "../../middleware/auth.js";
+import { sendEmail } from "../../lib/email.js";
+import { passwordResetEmail } from "../email/templates.js";
 
 const router = Router();
+
+const tooManyAttemptsHandler = (_req: Request, res: Response) =>
+  res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooManyAttemptsHandler,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooManyAttemptsHandler,
+});
 
 function signToken(userId: string) {
   return jwt.sign({ userId }, process.env.JWT_SECRET as string, { expiresIn: "7d" });
@@ -16,6 +39,20 @@ function toPublicUser(user: { id: string; email: string; name: string; platformR
   return { id: user.id, email: user.email, name: user.name, platformRole: user.platformRole };
 }
 
+function frontendUrl() {
+  return process.env.FRONTEND_URL || "http://localhost:5173";
+}
+
+// Raw token is emailed to the user; only its hash is ever stored, so a DB
+// read alone can't be used to reset someone's password.
+function generateResetToken(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function hashResetToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 const registerSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
@@ -23,7 +60,7 @@ const registerSchema = z.object({
   organizationName: z.string().min(1),
 });
 
-router.post("/register", async (req, res, next) => {
+router.post("/register", registerLimiter, async (req, res, next) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -67,7 +104,7 @@ router.post("/register", async (req, res, next) => {
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 
-router.post("/login", async (req, res, next) => {
+router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -97,6 +134,72 @@ router.post("/login", async (req, res, next) => {
         role: m.role,
       })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+
+router.post("/forgot-password", async (req, res, next) => {
+  try {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "A valid email is required" });
+    }
+    const { email } = parsed.data;
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user) {
+      const token = generateResetToken();
+      const tokenHash = hashResetToken(token);
+      await prisma.passwordResetToken.create({
+        data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+      });
+      const resetUrl = `${frontendUrl()}/reset-password?token=${token}`;
+      // Best-effort: a flaky/misconfigured email provider must not break the
+      // always-200 response below (nor prevent the token from existing for
+      // someone who obtains the link another way).
+      await sendEmail({ to: user.email, ...passwordResetEmail(user.name, resetUrl) }).catch((err) =>
+        console.error("[auth] failed to send password reset email", err)
+      );
+    }
+
+    // Always the same response, regardless of whether the email exists --
+    // don't leak account existence via this endpoint.
+    res.json({ message: "If that email exists, a reset link has been sent." });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(8) });
+
+router.post("/reset-password", async (req, res, next) => {
+  try {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+    }
+    const { token, newPassword } = parsed.data;
+
+    const tokenHash = hashResetToken(token);
+    const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+
+    // Same generic message whether the token is missing, expired, or already
+    // used -- don't give an attacker a signal about which case it was.
+    const invalid = !record || record.usedAt || record.expiresAt < new Date();
+    if (invalid) {
+      return res.status(400).json({ error: "This reset link is invalid or has expired." });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: record!.userId }, data: { passwordHash } }),
+      prisma.passwordResetToken.update({ where: { id: record!.id }, data: { usedAt: new Date() } }),
+    ]);
+
+    res.json({ message: "Password updated. You can now log in." });
   } catch (err) {
     next(err);
   }

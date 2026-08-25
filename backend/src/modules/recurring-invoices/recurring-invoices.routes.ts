@@ -4,6 +4,7 @@ import { prisma } from "../../lib/db.js";
 import { requireAuth, requireOrgMember, type AuthedRequest } from "../../middleware/auth.js";
 import { generateInvoiceFromSchedule, sendRecurringInvoiceEmailIfNeeded } from "./scheduler.js";
 import { assertRecurringInvoicesAllowed, QuotaExceededError } from "../billing/limits.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get("/", async (req: AuthedRequest, res, next) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.json({ schedules });
+    res.json({ schedules: toApiNumbers(schedules) });
   } catch (err) {
     next(err);
   }
@@ -39,7 +40,7 @@ router.get("/:id", async (req: AuthedRequest, res, next) => {
       include: INCLUDE,
     });
     if (!schedule) return res.status(404).json({ error: "Recurring invoice not found" });
-    res.json(schedule);
+    res.json(toApiNumbers(schedule));
   } catch (err) {
     next(err);
   }
@@ -114,7 +115,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
       include: INCLUDE,
     });
 
-    res.status(201).json(schedule);
+    res.status(201).json(toApiNumbers(schedule));
   } catch (err) {
     next(err);
   }
@@ -166,7 +167,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.json(schedule);
+    res.json(toApiNumbers(schedule));
   } catch (err) {
     next(err);
   }
@@ -202,7 +203,7 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
       where: { id: existing.id },
       data: { status: parsed.data.status },
     });
-    res.json(schedule);
+    res.json(toApiNumbers(schedule));
   } catch (err) {
     next(err);
   }
@@ -232,7 +233,7 @@ router.post("/:id/run-now", async (req: AuthedRequest, res, next) => {
     }
 
     await sendRecurringInvoiceEmailIfNeeded(result.invoice);
-    res.status(201).json(result.invoice);
+    res.status(201).json(toApiNumbers(result.invoice));
   } catch (err) {
     next(err);
   }

@@ -3,6 +3,7 @@ import { round2 } from "../invoices/invoice-math.js";
 import { renderDocumentPdfToBuffer } from "../invoices/renderInvoicePdf.js";
 import { sendEmail } from "../../lib/email.js";
 import { statementEmail } from "../email/templates.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const POLL_INTERVAL_MS = 60 * 60 * 1000; // hourly, matches the other schedulers
 
@@ -28,7 +29,7 @@ interface OrgBranding {
 
 function buildStatementDocument(org: OrgBranding, customer: { name: string; email: string | null }, currency: string, invoices: OpenInvoiceRow[]) {
   const items = invoices.map((inv) => {
-    const balance = round2(inv.total - inv.amountPaid);
+    const balance = round2(inv.total - inv.amountPaid).toNumber();
     return {
       description: `Invoice ${inv.number} — due ${new Date(inv.dueDate).toLocaleDateString()}`,
       quantity: 1,
@@ -38,7 +39,7 @@ function buildStatementDocument(org: OrgBranding, customer: { name: string; emai
       total: balance,
     };
   });
-  const total = round2(items.reduce((sum, i) => sum + i.total, 0));
+  const total = round2(items.reduce((sum, i) => sum + i.total, 0)).toNumber();
 
   return {
     kind: "STATEMENT" as const,
@@ -69,19 +70,21 @@ async function sendStatementsForOrganization(
   // "Open" here means actually sent to the customer and still outstanding --
   // DRAFT invoices haven't been sent yet, so they must never appear on a
   // customer-facing statement even though they're technically unpaid.
-  const openInvoices = await prisma.invoice.findMany({
-    where: { organizationId: org.id, status: { in: ["SENT", "VIEWED", "OVERDUE"] } },
-    select: {
-      id: true,
-      number: true,
-      currency: true,
-      total: true,
-      amountPaid: true,
-      dueDate: true,
-      customerId: true,
-      customer: { select: { id: true, name: true, email: true } },
-    },
-  });
+  const openInvoices: OpenInvoiceRow[] = toApiNumbers(
+    await prisma.invoice.findMany({
+      where: { organizationId: org.id, status: { in: ["SENT", "VIEWED", "OVERDUE"] } },
+      select: {
+        id: true,
+        number: true,
+        currency: true,
+        total: true,
+        amountPaid: true,
+        dueDate: true,
+        customerId: true,
+        customer: { select: { id: true, name: true, email: true } },
+      },
+    })
+  );
 
   const byCustomer = new Map<string, OpenInvoiceRow[]>();
   for (const inv of openInvoices) {

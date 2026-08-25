@@ -7,6 +7,7 @@ import { nextCreditNoteNumber } from "./credit-note-number.js";
 import { renderDocumentPdfToBuffer } from "../invoices/renderInvoicePdf.js";
 import { sendEmail } from "../../lib/email.js";
 import { creditNoteEmail } from "../email/templates.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ router.get("/", async (req: AuthedRequest, res, next) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.json({ creditNotes });
+    res.json({ creditNotes: toApiNumbers(creditNotes) });
   } catch (err) {
     next(err);
   }
@@ -45,7 +46,7 @@ router.get("/:id", async (req: AuthedRequest, res, next) => {
       include: INCLUDE,
     });
     if (!creditNote) return res.status(404).json({ error: "Credit note not found" });
-    res.json(creditNote);
+    res.json(toApiNumbers(creditNote));
   } catch (err) {
     next(err);
   }
@@ -121,7 +122,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.status(201).json(creditNote);
+    res.status(201).json(toApiNumbers(creditNote));
   } catch (err) {
     next(err);
   }
@@ -180,7 +181,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
       });
     });
 
-    res.json(creditNote);
+    res.json(toApiNumbers(creditNote));
   } catch (err) {
     next(err);
   }
@@ -222,14 +223,15 @@ router.post("/:id/issue", async (req: AuthedRequest, res, next) => {
     }
 
     try {
+      const numericExisting = toApiNumbers(existing);
       const pdf = await renderDocumentPdfToBuffer({
-        ...existing,
+        ...numericExisting,
         kind: "CREDIT NOTE",
         status: "ISSUED",
         dueDate: null,
         amountPaid: 0,
       });
-      const { subject, html } = creditNoteEmail(existing.organization, existing, existing.customer);
+      const { subject, html } = creditNoteEmail(existing.organization, numericExisting, existing.customer);
       await sendEmail({
         to: existing.customer.email,
         subject,
@@ -245,7 +247,7 @@ router.post("/:id/issue", async (req: AuthedRequest, res, next) => {
       data: { status: "ISSUED", issueDate: new Date() },
       include: INCLUDE,
     });
-    res.json(creditNote);
+    res.json(toApiNumbers(creditNote));
   } catch (err) {
     next(err);
   }
@@ -266,7 +268,7 @@ router.post("/:id/void", async (req: AuthedRequest, res, next) => {
       data: { status: "VOID" },
       include: INCLUDE,
     });
-    res.json(creditNote);
+    res.json(toApiNumbers(creditNote));
   } catch (err) {
     next(err);
   }
@@ -285,7 +287,7 @@ router.get("/:id/pdf", async (req: AuthedRequest, res) => {
     if (!creditNote) return res.status(404).json({ error: "Credit note not found" });
 
     const buffer = await renderDocumentPdfToBuffer({
-      ...creditNote,
+      ...toApiNumbers(creditNote),
       kind: "CREDIT NOTE",
       dueDate: null,
       amountPaid: 0,

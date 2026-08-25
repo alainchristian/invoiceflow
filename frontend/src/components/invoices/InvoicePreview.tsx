@@ -40,6 +40,12 @@ export function InvoicePreview({
   const { data: org } = useCurrentOrganization();
   const brandColor = org?.brandColor || "#4f46e5";
 
+  // Approximate preview only -- plain float math with no rounding at each step,
+  // unlike the backend's invoice-math.ts (which uses Decimal and rounds at
+  // every intermediate step). The authoritative total is always recomputed
+  // server-side on save, so this can drift from it by fractions of a cent.
+  // Not worth porting to a Decimal library here purely for a live, unpersisted
+  // preview.
   const subtotal = items.reduce((sum, i) => sum + (i.quantity || 0) * (i.unitPrice || 0), 0);
   const discount = items.reduce((sum, i) => sum + (i.discount || 0), 0);
   const taxTotal = items.reduce(

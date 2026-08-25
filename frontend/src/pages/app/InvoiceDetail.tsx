@@ -120,6 +120,9 @@ export default function InvoiceDetail() {
             notes={invoice.notes ?? undefined}
             terms={invoice.terms ?? undefined}
             invoiceNumber={invoice.number}
+            poNumber={invoice.poNumber ?? undefined}
+            invoiceDiscountType={invoice.invoiceDiscountType}
+            invoiceDiscountValue={invoice.invoiceDiscountValue}
           />
         </div>
 
