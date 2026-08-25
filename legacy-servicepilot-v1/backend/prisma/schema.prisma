@@ -1,0 +1,117 @@
+// Dev uses SQLite for zero-setup local development. In production, switch
+// `provider` below to "postgresql" and point DATABASE_URL at a Postgres
+// instance -- no other code changes are required.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+
+  // Business profile used to brand client-facing proposals/invoices/PDFs
+  businessName String?
+  logoUrl      String? // data: URL (small logo, stored inline for simplicity)
+  brandColor   String? @default("#4f46e5")
+  address      String?
+  phone        String?
+
+  clients   Client[]
+  proposals Proposal[]
+  invoices  Invoice[]
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  company   String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  projects  Project[]
+  proposals Proposal[]
+  invoices  Invoice[]
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  title     String
+  status    String   @default("active") // active | completed | archived
+  createdAt DateTime @default(now())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  tasks Task[]
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  title     String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+}
+
+model Proposal {
+  id        String    @id @default(uuid())
+  title     String
+  content   String
+  amount    Float
+  status    String    @default("draft") // draft | sent | signed | declined
+  signedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+}
+
+model Invoice {
+  id                    String    @id @default(uuid())
+  number                String
+  amount                Float
+  taxRate               Float     @default(0) // percent, e.g. 8.5
+  discount              Float     @default(0) // flat amount subtracted from subtotal
+  notes                 String? // payment terms / thank-you note shown on the invoice
+  publicToken           String    @unique @default(uuid()) // for the client-facing shareable link
+  status                String    @default("draft") // draft | sent | paid | overdue
+  dueDate               DateTime
+  paidAt                DateTime?
+  stripePaymentIntentId String?
+  createdAt             DateTime  @default(now())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  items InvoiceItem[]
+}
+
+model InvoiceItem {
+  id        String @id @default(uuid())
+  description String
+  quantity  Float  @default(1)
+  unitPrice Float
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+}

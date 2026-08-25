@@ -1,0 +1,476 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  MEMBER
+}
+
+enum ProductType {
+  PRODUCT
+  SERVICE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  CARD
+  MOBILE_MONEY
+  OTHER
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum RecurringStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum NotificationType {
+  INVOICE_OVERDUE
+  PLATFORM_MESSAGE
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  PLATFORM_ADMIN
+  SUPPORT_ADMIN
+}
+
+enum Plan {
+  STARTER
+  PROFESSIONAL
+  BUSINESS
+}
+
+enum InvoiceDiscountType {
+  FLAT
+  PERCENT
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  ISSUED
+  VOID
+}
+
+enum PaymentType {
+  PAYMENT
+  REFUND
+}
+
+enum StatementRecipients {
+  ALL
+  OVERDUE_ONLY
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  passwordHash   String
+  name           String
+  platformRole   PlatformRole?
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  memberships OrganizationMember[]
+}
+
+// A tenant. Every business-owned record hangs off an Organization, never a User directly.
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  // Branding / invoice defaults
+  logoUrl             String?
+  brandColor          String?  @default("#4f46e5")
+  address             String?
+  phone               String?
+  email               String?
+  taxId               String?
+  invoicePrefix       String?  @default("INV")
+  nextInvoiceSeq      Int      @default(1)
+  quotePrefix         String?  @default("QUO")
+  nextQuoteSeq        Int      @default(1)
+  creditNotePrefix    String?  @default("CN")
+  nextCreditNoteSeq   Int      @default(1)
+  defaultCurrency     String?  @default("USD")
+  defaultTaxRate      Float    @default(0)
+  defaultPaymentTerms String?
+  defaultNotes        String?
+
+  // Automated customer account statements
+  statementsEnabled      Boolean              @default(false)
+  statementFrequencyDays Int                  @default(30)
+  statementRecipients    StatementRecipients  @default(OVERDUE_ONLY)
+  nextStatementRunAt     DateTime?
+
+  // Subscription billing (ServicePilot charging this tenant, NOT invoice payments)
+  plan                 Plan      @default(STARTER)
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?
+  subscriptionStatus   String?
+  currentPeriodEnd     DateTime?
+
+  // Platform-admin controls (ServicePilot staff managing tenants, not billing)
+  suspended         Boolean   @default(false)
+  suspendedAt       DateTime?
+  suspendedReason   String?
+
+  members           OrganizationMember[]
+  customers         Customer[]
+  products          Product[]
+  invoices          Invoice[]
+  quotes            Quote[]
+  recurringInvoices RecurringInvoice[]
+  creditNotes       CreditNote[]
+}
+
+model OrganizationMember {
+  id             String     @id @default(uuid())
+  role           MemberRole @default(MEMBER)
+  createdAt      DateTime   @default(now())
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  notifications Notification[]
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  company   String?
+  address   String?
+  createdAt DateTime @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  invoices          Invoice[]
+  quotes            Quote[]
+  recurringInvoices RecurringInvoice[]
+  creditNotes       CreditNote[]
+
+  @@index([organizationId])
+}
+
+model Product {
+  id           String      @id @default(uuid())
+  name         String
+  description  String?
+  type         ProductType @default(SERVICE)
+  defaultPrice Float       @default(0)
+  taxRate      Float       @default(0)
+  sku          String?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model Invoice {
+  id          String        @id @default(uuid())
+  number      String
+  issueDate   DateTime      @default(now())
+  dueDate     DateTime
+  currency    String        @default("USD")
+  status      InvoiceStatus @default(DRAFT)
+  subtotal    Float
+  discount    Float         @default(0)
+  invoiceDiscountType  InvoiceDiscountType @default(FLAT)
+  invoiceDiscountValue Float               @default(0)
+  taxTotal    Float         @default(0)
+  total       Float
+  amountPaid  Float         @default(0)
+  poNumber    String?
+  notes       String?
+  terms       String?
+  publicToken String        @unique @default(uuid())
+  viewedAt    DateTime?
+  paidAt      DateTime?
+  lastReminderSentAt DateTime?
+
+  stripeCheckoutSessionId String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  recurringInvoiceId String?
+  recurringInvoice   RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id], onDelete: SetNull)
+  quoteConversion    Quote?            @relation("QuoteConversion")
+
+  items         InvoiceItem[]
+  payments      Payment[]
+  notifications Notification[]
+  creditNotes   CreditNote[]
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([recurringInvoiceId])
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float
+  taxRate     Float   @default(0)
+  discount    Float   @default(0)
+  total       Float
+  sortOrder   Int     @default(0)
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  organizationMemberId String
+  organizationMember   OrganizationMember @relation(fields: [organizationMemberId], references: [id], onDelete: Cascade)
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationMemberId, read])
+  @@index([invoiceId])
+}
+
+model Quote {
+  id          String      @id @default(uuid())
+  number      String
+  issueDate   DateTime    @default(now())
+  expiryDate  DateTime?
+  currency    String      @default("USD")
+  status      QuoteStatus @default(DRAFT)
+  subtotal    Float
+  discount    Float       @default(0)
+  invoiceDiscountType  InvoiceDiscountType @default(FLAT)
+  invoiceDiscountValue Float               @default(0)
+  taxTotal    Float       @default(0)
+  total       Float
+  poNumber    String?
+  notes       String?
+  terms       String?
+  publicToken String      @unique @default(uuid())
+  viewedAt    DateTime?
+  respondedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  items QuoteItem[]
+
+  convertedInvoiceId String?  @unique
+  convertedInvoice   Invoice? @relation("QuoteConversion", fields: [convertedInvoiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model QuoteItem {
+  id          String @id @default(uuid())
+  description String
+  quantity    Float  @default(1)
+  unitPrice   Float
+  taxRate     Float  @default(0)
+  discount    Float  @default(0)
+  total       Float
+  sortOrder   Int    @default(0)
+
+  quoteId String
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+model RecurringInvoice {
+  id          String             @id @default(uuid())
+  frequency   RecurringFrequency
+  status      RecurringStatus    @default(ACTIVE)
+  currency    String             @default("USD")
+  dueInDays   Int                @default(14)
+  generateAsDraft Boolean        @default(false)
+  notes       String?
+  terms       String?
+  startDate   DateTime
+  nextRunDate DateTime
+  endDate     DateTime?
+  lastRunAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  items    RecurringInvoiceItem[]
+  invoices Invoice[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([nextRunDate])
+}
+
+model RecurringInvoiceItem {
+  id          String @id @default(uuid())
+  description String
+  quantity    Float  @default(1)
+  unitPrice   Float
+  taxRate     Float  @default(0)
+  discount    Float  @default(0)
+  sortOrder   Int    @default(0)
+
+  recurringInvoiceId String
+  recurringInvoice   RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  amount      Float
+  type        PaymentType   @default(PAYMENT)
+  method      PaymentMethod @default(OTHER)
+  paidAt      DateTime      @default(now())
+  notes       String?
+  createdAt   DateTime      @default(now())
+  provider    String?
+  providerRef String?       @unique
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model CreditNote {
+  id          String           @id @default(uuid())
+  number      String
+  issueDate   DateTime         @default(now())
+  currency    String           @default("USD")
+  status      CreditNoteStatus @default(DRAFT)
+  reason      String?
+  subtotal    Float
+  discount    Float            @default(0)
+  taxTotal    Float            @default(0)
+  total       Float
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  items CreditNoteItem[]
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([invoiceId])
+}
+
+model CreditNoteItem {
+  id          String @id @default(uuid())
+  description String
+  quantity    Float  @default(1)
+  unitPrice   Float
+  taxRate     Float  @default(0)
+  discount    Float  @default(0)
+  total       Float
+  sortOrder   Int    @default(0)
+
+  creditNoteId String
+  creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+}
+
+// Deliberately has no foreign-key relations -- an audit row must survive even
+// after the organization/user it refers to is deleted (e.g. platform-admin
+// org deletion snapshots the org's name/plan/members into `metadata` first).
+model AdminAuditLog {
+  id                   String   @id @default(uuid())
+  adminUserId          String
+  action               String
+  targetOrganizationId String?
+  targetUserId         String?
+  metadata             Json?
+  ipAddress            String?
+  userAgent            String?
+  createdAt            DateTime @default(now())
+
+  @@index([adminUserId])
+  @@index([targetOrganizationId])
+  @@index([createdAt])
+}
+
+// Singleton row (id is always the literal string "singleton") -- platform-wide
+// configuration that a Super Admin can edit from /admin/settings.
+model PlatformSettings {
+  id                  String   @id @default("singleton")
+  registrationEnabled Boolean  @default(true)
+  platformName        String   @default("InvoiceFlow")
+  supportEmail        String?
+  updatedAt           DateTime @updatedAt
+}

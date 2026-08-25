@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /app/
+Disallow: /i/
+Disallow: /q/
+
+Sitemap: https://invoiceflow.app/sitemap.xml
