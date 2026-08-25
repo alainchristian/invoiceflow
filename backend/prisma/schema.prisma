@@ -182,6 +182,7 @@ model Organization {
   apiKeys           ApiKey[]
   webhookEndpoints  WebhookEndpoint[]
   timeEntries       TimeEntry[]
+  expenses          Expense[]
 }
 
 model OrganizationMember {
@@ -218,6 +219,7 @@ model Customer {
   recurringInvoices RecurringInvoice[]
   creditNotes       CreditNote[]
   timeEntries       TimeEntry[]
+  expenses          Expense[]
 
   @@index([organizationId])
 }
@@ -301,6 +303,7 @@ model InvoiceItem {
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   timeEntry TimeEntry?
+  expense   Expense?
 }
 
 model TimeEntry {
@@ -323,6 +326,30 @@ model TimeEntry {
 
   @@index([organizationId])
   @@index([customerId, billed])
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  description String
+  amount      Decimal  @db.Decimal(14, 2)
+  billable    Boolean  @default(true)
+  billed      Boolean  @default(false)
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  // Only billable expenses need a customer to invoice against -- a
+  // non-billable expense (e.g. office supplies) has no client to bill.
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  invoiceItemId String?      @unique
+  invoiceItem   InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([customerId, billable, billed])
 }
 
 model Notification {

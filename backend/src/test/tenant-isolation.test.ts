@@ -28,6 +28,7 @@ describe("tenant isolation", () => {
   let customerB: { id: string };
   let invoiceB: { id: string };
   let timeEntryB: { id: string };
+  let expenseB: { id: string };
 
   beforeAll(async () => {
     orgA = await makeOrgWithUser("TenantIsoA");
@@ -54,9 +55,20 @@ describe("tenant isolation", () => {
         occurredAt: new Date(),
       },
     });
+    expenseB = await prisma.expense.create({
+      data: {
+        organizationId: orgB.org.id,
+        customerId: customerB.id,
+        description: "Org B's unbilled expense",
+        amount: 40,
+        billable: true,
+        occurredAt: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.expense.deleteMany({ where: { organizationId: { in: [orgA.org.id, orgB.org.id] } } });
     await prisma.timeEntry.deleteMany({ where: { organizationId: { in: [orgA.org.id, orgB.org.id] } } });
     await prisma.invoice.deleteMany({ where: { organizationId: { in: [orgA.org.id, orgB.org.id] } } });
     await prisma.customer.deleteMany({ where: { organizationId: { in: [orgA.org.id, orgB.org.id] } } });
@@ -154,5 +166,53 @@ describe("tenant isolation", () => {
     expect(updated?.invoiceItemId).toBe(res.body.items[0].id);
 
     await prisma.timeEntry.delete({ where: { id: ownEntry.id } });
+  });
+
+  it("does not bill Org B's expense when Org A's invoice-create request references its id", async () => {
+    const res = await request(app)
+      .post("/api/invoices")
+      .set("Authorization", `Bearer ${orgA.token}`)
+      .set("X-Organization-Id", orgA.org.id)
+      .send({
+        customerId: customerA.id,
+        dueDate: new Date().toISOString(),
+        items: [{ description: "Travel", quantity: 1, unitPrice: 40, expenseId: expenseB.id }],
+      });
+    expect(res.status).toBe(201);
+
+    const stillOrgBs = await prisma.expense.findUnique({ where: { id: expenseB.id } });
+    expect(stillOrgBs?.billed).toBe(false);
+    expect(stillOrgBs?.invoiceItemId).toBeNull();
+  });
+
+  it("bills an expense and computes the correct line-item total when the owning org invoices it", async () => {
+    const ownExpense = await prisma.expense.create({
+      data: {
+        organizationId: orgB.org.id,
+        customerId: customerB.id,
+        description: "Hotel",
+        amount: 210,
+        billable: true,
+        occurredAt: new Date(),
+      },
+    });
+
+    const res = await request(app)
+      .post("/api/invoices")
+      .set("Authorization", `Bearer ${orgB.token}`)
+      .set("X-Organization-Id", orgB.org.id)
+      .send({
+        customerId: customerB.id,
+        dueDate: new Date().toISOString(),
+        items: [{ description: ownExpense.description, quantity: 1, unitPrice: 210, expenseId: ownExpense.id }],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.total).toBe(210);
+
+    const updated = await prisma.expense.findUnique({ where: { id: ownExpense.id } });
+    expect(updated?.billed).toBe(true);
+    expect(updated?.invoiceItemId).toBe(res.body.items[0].id);
+
+    await prisma.expense.delete({ where: { id: ownExpense.id } });
   });
 });

@@ -5,6 +5,7 @@ import { useCustomers } from "@/hooks/useCustomers";
 import { useInvoice, useCreateInvoice, useUpdateInvoice, type InvoiceFormItem } from "@/hooks/useInvoices";
 import { useProducts } from "@/hooks/useProducts";
 import { useUnbilledTimeEntries } from "@/hooks/useTimeEntries";
+import { useUnbilledExpenses } from "@/hooks/useExpenses";
 import { PageHeader } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea } from "@/components/ui/Input";
@@ -45,6 +46,7 @@ export default function InvoiceForm() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   const { data: unbilledTimeEntries = [] } = useUnbilledTimeEntries(customerId || undefined);
+  const { data: unbilledExpenses = [] } = useUnbilledExpenses(customerId || undefined);
 
   useEffect(() => {
     if (existingInvoice) {
@@ -105,6 +107,18 @@ export default function InvoiceForm() {
       taxRate: 0,
       discount: 0,
       timeEntryId: entry.id,
+    }));
+    setItems((prev) => [...prev, ...newRows]);
+  }
+
+  function addUnbilledExpenses() {
+    const newRows: InvoiceFormItem[] = unbilledExpenses.map((expense) => ({
+      description: expense.description,
+      quantity: 1,
+      unitPrice: expense.amount,
+      taxRate: 0,
+      discount: 0,
+      expenseId: expense.id,
     }));
     setItems((prev) => [...prev, ...newRows]);
   }
@@ -261,6 +275,15 @@ export default function InvoiceForm() {
                       className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
                     >
                       <Plus className="h-3.5 w-3.5" /> Add unbilled time ({unbilledTimeEntries.length})
+                    </button>
+                  )}
+                  {customerId && unbilledExpenses.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={addUnbilledExpenses}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add unbilled expenses ({unbilledExpenses.length})
                     </button>
                   )}
                   <button

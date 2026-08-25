@@ -21,6 +21,7 @@ import webhookEndpointsRoutes from "./modules/webhooks/webhooks.routes.js";
 import apiV1CustomersRoutes from "./modules/api-v1/customers.routes.js";
 import apiV1InvoicesRoutes from "./modules/api-v1/invoices.routes.js";
 import timeEntriesRoutes from "./modules/time-entries/time-entries.routes.js";
+import expensesRoutes from "./modules/expenses/expenses.routes.js";
 
 // Builds the Express app without starting it listening or starting the
 // background schedulers -- lets tests (supertest) exercise real routes/
@@ -66,6 +67,7 @@ export function createApp() {
   app.use("/api/v1/customers", apiV1CustomersRoutes);
   app.use("/api/v1/invoices", apiV1InvoicesRoutes);
   app.use("/api/time-entries", timeEntriesRoutes);
+  app.use("/api/expenses", expensesRoutes);
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);

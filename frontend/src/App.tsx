@@ -32,6 +32,7 @@ import CustomerDetail from "@/pages/app/CustomerDetail";
 import Products from "@/pages/app/Products";
 import Payments from "@/pages/app/Payments";
 import TimeTracking from "@/pages/app/TimeTracking";
+import Expenses from "@/pages/app/Expenses";
 import CreditNotes from "@/pages/app/CreditNotes";
 import CreditNoteForm from "@/pages/app/CreditNoteForm";
 import CreditNoteDetail from "@/pages/app/CreditNoteDetail";
@@ -98,6 +99,7 @@ export default function App() {
                   <Route path="customers/:id" element={<CustomerDetail />} />
                   <Route path="products" element={<Products />} />
                   <Route path="time-tracking" element={<TimeTracking />} />
+                  <Route path="expenses" element={<Expenses />} />
                   <Route path="payments" element={<Payments />} />
                   <Route path="credit-notes" element={<CreditNotes />} />
                   <Route path="credit-notes/new" element={<CreditNoteForm />} />

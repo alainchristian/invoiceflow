@@ -273,3 +273,16 @@ export interface TimeEntry {
   customer: { id: string; name: string };
   invoiceItemId?: string | null;
 }
+
+export interface Expense {
+  id: string;
+  description: string;
+  amount: number;
+  billable: boolean;
+  billed: boolean;
+  occurredAt: string;
+  createdAt: string;
+  customerId?: string | null;
+  customer?: { id: string; name: string } | null;
+  invoiceItemId?: string | null;
+}

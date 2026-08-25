@@ -33,6 +33,7 @@ export interface InvoiceFormItem {
   taxRate?: number;
   discount?: number;
   timeEntryId?: string;
+  expenseId?: string;
 }
 
 export interface InvoiceFormValues {

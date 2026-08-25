@@ -174,6 +174,10 @@ npm run dev              # http://localhost:5173
   straight into an invoice as priced line items with one click (entries are
   locked once billed and unlinked, not un-billed, if that invoice is later
   edited)
+- Expense tracking: log business costs (optionally tied to a customer and
+  marked billable), then pull unbilled billable expenses into an invoice the
+  same one-click way as time entries; non-billable expenses (no customer
+  required) are for internal cost tracking only
 
 ## Next steps
 
@@ -186,6 +190,11 @@ npm run dev              # http://localhost:5173
   and Billing settings tab are UI-only right now)
 - Reports/analytics beyond the dashboard (per-customer and per-product
   revenue breakdowns)
+- SSO/SAML (Phase 2.1 — deferred; recommended approach is a drop-in provider
+  like WorkOS rather than hand-rolled SAML, needs an external account)
+- Tax compliance beyond a flat rate (Phase 2.3 — deferred; recommended
+  approach is Stripe Tax on the existing checkout flow, needs Stripe Tax
+  enabled on the account)
 - File storage abstraction (S3/R2/Supabase) for logos and PDFs instead of
   inline data URLs and on-the-fly generation
 - Email delivery abstraction (Resend/SendGrid/SES) for actually sending

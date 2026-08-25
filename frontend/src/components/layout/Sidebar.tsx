@@ -19,6 +19,7 @@ import {
   X,
   Webhook,
   Clock,
+  Banknote,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,7 @@ const mainLinks = [
   { to: "/app/customers", label: "Customers", icon: Users },
   { to: "/app/products", label: "Products & Services", icon: Package },
   { to: "/app/time-tracking", label: "Time Tracking", icon: Clock },
+  { to: "/app/expenses", label: "Expenses", icon: Banknote },
   { to: "/app/payments", label: "Payments", icon: Wallet },
   { to: "/app/credit-notes", label: "Credit Notes", icon: Receipt },
 ];

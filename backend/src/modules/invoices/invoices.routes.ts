@@ -131,6 +131,7 @@ const lineItemSchema = z.object({
   taxRate: z.number().min(0).optional(),
   discount: z.number().min(0).optional(),
   timeEntryId: z.string().optional(),
+  expenseId: z.string().optional(),
 });
 
 const invoiceSchema = z.object({
@@ -163,6 +164,24 @@ async function linkBilledTimeEntries(
       if (!item.timeEntryId) return Promise.resolve();
       return tx.timeEntry.updateMany({
         where: { id: item.timeEntryId, organizationId, billed: false },
+        data: { billed: true, invoiceItemId: createdItems[index].id },
+      });
+    })
+  );
+}
+
+// Same idea as linkBilledTimeEntries, for expense line items.
+async function linkBilledExpenses(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  inputItems: { expenseId?: string }[],
+  createdItems: { id: string }[]
+) {
+  await Promise.all(
+    inputItems.map((item, index) => {
+      if (!item.expenseId) return Promise.resolve();
+      return tx.expense.updateMany({
+        where: { id: item.expenseId, organizationId, billed: false },
         data: { billed: true, invoiceItemId: createdItems[index].id },
       });
     })
@@ -229,6 +248,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
         include: INCLUDE,
       });
       await linkBilledTimeEntries(tx, req.organizationId as string, data.items, created.items);
+      await linkBilledExpenses(tx, req.organizationId as string, data.items, created.items);
       return created;
     });
 
@@ -298,6 +318,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
         include: INCLUDE,
       });
       await linkBilledTimeEntries(tx, req.organizationId as string, data.items, updated.items);
+      await linkBilledExpenses(tx, req.organizationId as string, data.items, updated.items);
       return updated;
     });
 
