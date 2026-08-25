@@ -11,6 +11,7 @@ import { sendEmail } from "../../lib/email.js";
 import { quoteEmail } from "../email/templates.js";
 import { toApiNumbers } from "../../lib/serialize.js";
 import { dispatchWebhook } from "../../lib/webhook-dispatch.js";
+import { notifyOrganization } from "../../lib/notify.js";
 
 const router = Router();
 const publicRouter = Router();
@@ -357,9 +358,16 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
     });
 
     if (quote.status === "ACCEPTED" && existing.status !== "ACCEPTED") {
-      dispatchWebhook(quote.organizationId, "quote.accepted", toApiNumbers(quote)).catch((err) =>
+      const apiQuote = toApiNumbers(quote);
+      dispatchWebhook(quote.organizationId, "quote.accepted", apiQuote).catch((err) =>
         console.error("[webhooks] quote.accepted dispatch failed", err)
       );
+      notifyOrganization(quote.organizationId, {
+        type: "QUOTE_ACCEPTED",
+        title: `Quote ${quote.number} was accepted`,
+        message: `Quote ${quote.number} (${apiQuote.currency} ${apiQuote.total}) has been accepted.`,
+        quoteId: quote.id,
+      }).catch((err) => console.error("[notify] quote.accepted failed", err));
     }
 
     res.json(toApiNumbers(quote));
@@ -537,9 +545,16 @@ publicRouter.post("/:token/respond", async (req, res, next) => {
     });
 
     if (updated.status === "ACCEPTED") {
-      dispatchWebhook(updated.organizationId, "quote.accepted", toApiNumbers(updated)).catch((err) =>
+      const apiQuote = toApiNumbers(updated);
+      dispatchWebhook(updated.organizationId, "quote.accepted", apiQuote).catch((err) =>
         console.error("[webhooks] quote.accepted dispatch failed", err)
       );
+      notifyOrganization(updated.organizationId, {
+        type: "QUOTE_ACCEPTED",
+        title: `Quote ${updated.number} was accepted`,
+        message: `${updated.customer.name} accepted quote ${updated.number} (${apiQuote.currency} ${apiQuote.total}).`,
+        quoteId: updated.id,
+      }).catch((err) => console.error("[notify] quote.accepted failed", err));
     }
 
     res.json(toApiNumbers(updated));

@@ -178,24 +178,28 @@ npm run dev              # http://localhost:5173
   marked billable), then pull unbilled billable expenses into an invoice the
   same one-click way as time entries; non-billable expenses (no customer
   required) are for internal cost tracking only
+- Quotes/estimates with their own lifecycle, and one-click conversion of an
+  accepted quote into a real invoice
+- Recurring invoices (generated on a schedule) and automated overdue-payment
+  reminder emails, both run by hourly background schedulers
+- Real payment collection on the public client-facing invoice page via a
+  genuine Stripe Checkout Session (not just "view and download")
+- Stripe Billing for InvoiceFlow's own subscription plans (checkout +
+  billing-portal session creation, wired to Settings → Billing)
+- Analytics page beyond the dashboard: top customers, revenue by
+  product/service, and quote conversion rate by month
+- Email delivery via Resend for invoices, reminders, receipts, password
+  reset, and statements
+- In-app notifications for invoice viewed, invoice paid, and quote accepted,
+  in addition to the existing overdue/reminder notifications — fanned out to
+  every member of the organization
 
 ## Next steps
 
-- Quotes/estimates and converting an accepted quote into an invoice
-- Recurring invoices and automated payment reminders
-- In-app notifications (invoice viewed/paid, quote accepted, etc.)
-- Real payment collection on the public client-facing invoice page (Stripe/etc
-  checkout — it's currently a read-only "view and download" page)
-- Stripe Billing for InvoiceFlow's own subscription plans (the pricing page
-  and Billing settings tab are UI-only right now)
-- Reports/analytics beyond the dashboard (per-customer and per-product
-  revenue breakdowns)
+- File storage abstraction (S3/R2/Supabase) for logos and PDFs instead of
+  inline data URLs and on-the-fly generation
 - SSO/SAML (Phase 2.1 — deferred; recommended approach is a drop-in provider
   like WorkOS rather than hand-rolled SAML, needs an external account)
 - Tax compliance beyond a flat rate (Phase 2.3 — deferred; recommended
   approach is Stripe Tax on the existing checkout flow, needs Stripe Tax
   enabled on the account)
-- File storage abstraction (S3/R2/Supabase) for logos and PDFs instead of
-  inline data URLs and on-the-fly generation
-- Email delivery abstraction (Resend/SendGrid/SES) for actually sending
-  invoices and reminders

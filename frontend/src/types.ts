@@ -5,7 +5,12 @@ export type MemberRole = "OWNER" | "ADMIN" | "ACCOUNTANT" | "MEMBER";
 export type QuoteStatus = "DRAFT" | "SENT" | "VIEWED" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONVERTED";
 export type RecurringFrequency = "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type RecurringStatus = "ACTIVE" | "PAUSED" | "ENDED";
-export type NotificationType = "INVOICE_OVERDUE";
+export type NotificationType =
+  | "INVOICE_OVERDUE"
+  | "INVOICE_VIEWED"
+  | "INVOICE_PAID"
+  | "QUOTE_ACCEPTED"
+  | "PLATFORM_MESSAGE";
 export type InvoiceDiscountType = "FLAT" | "PERCENT";
 export type CreditNoteStatus = "DRAFT" | "ISSUED" | "VOID";
 export type PaymentType = "PAYMENT" | "REFUND";

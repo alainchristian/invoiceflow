@@ -10,6 +10,7 @@ import { sendEmail } from "../../lib/email.js";
 import { paymentReceiptEmail } from "../email/templates.js";
 import { toApiNumbers } from "../../lib/serialize.js";
 import { dispatchWebhook } from "../../lib/webhook-dispatch.js";
+import { notifyOrganization } from "../../lib/notify.js";
 
 const router = Router();
 
@@ -85,9 +86,16 @@ export async function handleCheckoutSessionCompleted(event: Stripe.Event): Promi
   // invoice.status was confirmed not-PAID by the early-return guard above,
   // so reaching PAID here is always a genuine new transition.
   if (updatedInvoice.status === "PAID") {
-    dispatchWebhook(updatedInvoice.organizationId, "invoice.paid", toApiNumbers(updatedInvoice)).catch((err) =>
+    const apiInvoice = toApiNumbers(updatedInvoice);
+    dispatchWebhook(updatedInvoice.organizationId, "invoice.paid", apiInvoice).catch((err) =>
       console.error("[webhooks] invoice.paid dispatch failed", err)
     );
+    notifyOrganization(updatedInvoice.organizationId, {
+      type: "INVOICE_PAID",
+      title: `Invoice ${updatedInvoice.number} was paid`,
+      message: `${updatedInvoice.customer.name} paid invoice ${updatedInvoice.number} in full (${apiInvoice.currency} ${apiInvoice.total}).`,
+      invoiceId: updatedInvoice.id,
+    }).catch((err) => console.error("[notify] invoice.paid failed", err));
   }
 }
 

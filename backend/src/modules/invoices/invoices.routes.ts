@@ -15,6 +15,7 @@ import { invoiceEmail, paymentReminderEmail } from "../email/templates.js";
 import { toApiNumbers } from "../../lib/serialize.js";
 import { toCsv, sendCsv } from "../../lib/csv.js";
 import { dispatchWebhook } from "../../lib/webhook-dispatch.js";
+import { notifyOrganization } from "../../lib/notify.js";
 
 const router = Router();
 const publicRouter = Router();
@@ -494,6 +495,12 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
       dispatchWebhook(req.organizationId as string, "invoice.paid", apiInvoice).catch((err) =>
         console.error("[webhooks] invoice.paid dispatch failed", err)
       );
+      notifyOrganization(req.organizationId as string, {
+        type: "INVOICE_PAID",
+        title: `Invoice ${invoice.number} was paid`,
+        message: `Invoice ${invoice.number} (${apiInvoice.currency} ${apiInvoice.total}) has been paid in full.`,
+        invoiceId: invoice.id,
+      }).catch((err) => console.error("[notify] invoice.paid failed", err));
     }
     res.json(toApiNumbers(invoice));
   } catch (err) {
@@ -541,9 +548,16 @@ router.post("/:id/payments", async (req: AuthedRequest, res, next) => {
     ]);
 
     if (invoice.status === "PAID" && existing.status !== "PAID") {
-      dispatchWebhook(req.organizationId as string, "invoice.paid", toApiNumbers(invoice)).catch((err) =>
+      const apiInvoice = toApiNumbers(invoice);
+      dispatchWebhook(req.organizationId as string, "invoice.paid", apiInvoice).catch((err) =>
         console.error("[webhooks] invoice.paid dispatch failed", err)
       );
+      notifyOrganization(req.organizationId as string, {
+        type: "INVOICE_PAID",
+        title: `Invoice ${invoice.number} was paid`,
+        message: `${invoice.customer.name} paid invoice ${invoice.number} in full (${apiInvoice.currency} ${apiInvoice.total}).`,
+        invoiceId: invoice.id,
+      }).catch((err) => console.error("[notify] invoice.paid failed", err));
     }
     res.status(201).json(toApiNumbers({ payment, invoice }));
   } catch (err) {
@@ -655,12 +669,21 @@ publicRouter.get("/:token", async (req, res, next) => {
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
 
     if (!invoice.viewedAt && (invoice.status === "DRAFT" || invoice.status === "SENT")) {
+      const wasSent = invoice.status === "SENT";
       await prisma.invoice.update({
         where: { id: invoice.id },
-        data: { viewedAt: new Date(), status: invoice.status === "SENT" ? "VIEWED" : invoice.status },
+        data: { viewedAt: new Date(), status: wasSent ? "VIEWED" : invoice.status },
       });
       invoice.viewedAt = new Date();
-      if (invoice.status === "SENT") invoice.status = "VIEWED";
+      if (wasSent) {
+        invoice.status = "VIEWED";
+        notifyOrganization(invoice.organizationId, {
+          type: "INVOICE_VIEWED",
+          title: `Invoice ${invoice.number} was viewed`,
+          message: `${invoice.customer.name} just opened invoice ${invoice.number}.`,
+          invoiceId: invoice.id,
+        }).catch((err) => console.error("[notify] invoice.viewed failed", err));
+      }
     }
 
     res.json(toApiNumbers(invoice));
