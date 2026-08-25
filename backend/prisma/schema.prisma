@@ -146,12 +146,19 @@ model Organization {
   defaultTaxRate      Float   @default(0)
   defaultPaymentTerms String?
   defaultNotes        String?
+  pdfTemplate         String  @default("classic")
 
   // Automated customer account statements
   statementsEnabled      Boolean             @default(false)
   statementFrequencyDays Int                 @default(30)
   statementRecipients    StatementRecipients @default(OVERDUE_ONLY)
   nextStatementRunAt     DateTime?
+
+  // Late fees on overdue invoices
+  lateFeeEnabled   Boolean             @default(false)
+  lateFeeType      InvoiceDiscountType @default(FLAT)
+  lateFeeValue     Decimal             @default(0) @db.Decimal(14, 2)
+  lateFeeGraceDays Int                 @default(0)
 
   // Subscription billing (ServicePilot charging this tenant, NOT invoice payments)
   plan                 Plan      @default(STARTER)
@@ -172,6 +179,9 @@ model Organization {
   quotes            Quote[]
   recurringInvoices RecurringInvoice[]
   creditNotes       CreditNote[]
+  apiKeys           ApiKey[]
+  webhookEndpoints  WebhookEndpoint[]
+  timeEntries       TimeEntry[]
 }
 
 model OrganizationMember {
@@ -191,13 +201,14 @@ model OrganizationMember {
 }
 
 model Customer {
-  id        String   @id @default(uuid())
-  name      String
-  email     String?
-  phone     String?
-  company   String?
-  address   String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  company     String?
+  address     String?
+  portalToken String   @unique @default(uuid())
+  createdAt   DateTime @default(now())
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -206,6 +217,7 @@ model Customer {
   quotes            Quote[]
   recurringInvoices RecurringInvoice[]
   creditNotes       CreditNote[]
+  timeEntries       TimeEntry[]
 
   @@index([organizationId])
 }
@@ -241,6 +253,7 @@ model Invoice {
   taxTotal             Decimal             @default(0) @db.Decimal(14, 2)
   total                Decimal             @db.Decimal(14, 2)
   amountPaid           Decimal             @default(0) @db.Decimal(14, 2)
+  depositAmount        Decimal?            @db.Decimal(14, 2)
   poNumber             String?
   notes                String?
   terms                String?
@@ -286,6 +299,30 @@ model InvoiceItem {
 
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  timeEntry TimeEntry?
+}
+
+model TimeEntry {
+  id          String   @id @default(uuid())
+  description String
+  minutes     Int
+  hourlyRate  Decimal  @db.Decimal(14, 2)
+  billed      Boolean  @default(false)
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  invoiceItemId String?      @unique
+  invoiceItem   InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([customerId, billed])
 }
 
 model Notification {
@@ -486,4 +523,34 @@ model PlatformSettings {
   platformName        String   @default("InvoiceFlow")
   supportEmail        String?
   updatedAt           DateTime @updatedAt
+}
+
+// Only the hash is stored -- the raw key is shown once at creation time and
+// never persisted or retrievable again, same handling as password reset
+// tokens.
+model ApiKey {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  keyHash        String       @unique
+  keyPrefix      String
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+
+  @@index([organizationId])
+}
+
+model WebhookEndpoint {
+  id               String       @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  url              String
+  secret           String
+  subscribedEvents String[]
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+
+  @@index([organizationId])
 }

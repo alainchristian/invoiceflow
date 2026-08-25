@@ -9,6 +9,7 @@ import { planForStripePriceId } from "../billing/plans.js";
 import { sendEmail } from "../../lib/email.js";
 import { paymentReceiptEmail } from "../email/templates.js";
 import { toApiNumbers } from "../../lib/serialize.js";
+import { dispatchWebhook } from "../../lib/webhook-dispatch.js";
 
 const router = Router();
 
@@ -78,6 +79,14 @@ export async function handleCheckoutSessionCompleted(event: Stripe.Event): Promi
     );
     await sendEmail({ to: updatedInvoice.customer.email, subject, html }).catch((err) =>
       console.error("[stripe-webhook] failed to send payment receipt email", err)
+    );
+  }
+
+  // invoice.status was confirmed not-PAID by the early-return guard above,
+  // so reaching PAID here is always a genuine new transition.
+  if (updatedInvoice.status === "PAID") {
+    dispatchWebhook(updatedInvoice.organizationId, "invoice.paid", toApiNumbers(updatedInvoice)).catch((err) =>
+      console.error("[webhooks] invoice.paid dispatch failed", err)
     );
   }
 }

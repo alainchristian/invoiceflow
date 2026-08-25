@@ -28,6 +28,7 @@ export interface Customer {
   phone?: string | null;
   company?: string | null;
   address?: string | null;
+  portalToken: string;
   createdAt: string;
   totalInvoiced?: number;
   outstanding?: number;
@@ -78,6 +79,7 @@ export interface Invoice {
   taxTotal: number;
   total: number;
   amountPaid: number;
+  depositAmount?: number | null;
   poNumber?: string | null;
   notes?: string | null;
   terms?: string | null;
@@ -107,10 +109,15 @@ export interface Organization {
   defaultTaxRate?: number;
   defaultPaymentTerms?: string | null;
   defaultNotes?: string | null;
+  pdfTemplate?: "classic" | "modern";
   statementsEnabled: boolean;
   statementFrequencyDays: number;
   statementRecipients: "ALL" | "OVERDUE_ONLY";
   nextStatementRunAt?: string | null;
+  lateFeeEnabled: boolean;
+  lateFeeType: "FLAT" | "PERCENT";
+  lateFeeValue: number;
+  lateFeeGraceDays: number;
   plan: "STARTER" | "PROFESSIONAL" | "BUSINESS";
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
@@ -231,4 +238,38 @@ export interface AnalyticsSummary {
   topCustomers: { customerId: string; name: string; revenue: number }[];
   revenueByProduct: { description: string; revenue: number }[];
   quoteConversionByMonth: { label: string; total: number; converted: number; rate: number }[];
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export const WEBHOOK_EVENTS = ["invoice.sent", "invoice.paid", "quote.accepted"] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  secret: string;
+  subscribedEvents: string[];
+  active: boolean;
+  createdAt: string;
+}
+
+export interface TimeEntry {
+  id: string;
+  description: string;
+  minutes: number;
+  hourlyRate: number;
+  billed: boolean;
+  occurredAt: string;
+  createdAt: string;
+  customerId: string;
+  customer: { id: string; name: string };
+  invoiceItemId?: string | null;
 }

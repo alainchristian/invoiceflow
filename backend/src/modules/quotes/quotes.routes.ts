@@ -10,6 +10,7 @@ import { assertInvoiceQuotaAvailable, QuotaExceededError } from "../billing/limi
 import { sendEmail } from "../../lib/email.js";
 import { quoteEmail } from "../email/templates.js";
 import { toApiNumbers } from "../../lib/serialize.js";
+import { dispatchWebhook } from "../../lib/webhook-dispatch.js";
 
 const router = Router();
 const publicRouter = Router();
@@ -20,7 +21,7 @@ const PUBLIC_INCLUDE = {
   customer: true,
   items: { orderBy: { sortOrder: "asc" as const } },
   organization: {
-    select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true },
+    select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true, pdfTemplate: true },
   },
 };
 const INVOICE_INCLUDE = { customer: true, items: { orderBy: { sortOrder: "asc" as const } }, payments: true };
@@ -354,6 +355,13 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
         respondedAt: respondedNow ? new Date() : existing.respondedAt,
       },
     });
+
+    if (quote.status === "ACCEPTED" && existing.status !== "ACCEPTED") {
+      dispatchWebhook(quote.organizationId, "quote.accepted", toApiNumbers(quote)).catch((err) =>
+        console.error("[webhooks] quote.accepted dispatch failed", err)
+      );
+    }
+
     res.json(toApiNumbers(quote));
   } catch (err) {
     next(err);
@@ -527,6 +535,12 @@ publicRouter.post("/:token/respond", async (req, res, next) => {
       },
       include: PUBLIC_INCLUDE,
     });
+
+    if (updated.status === "ACCEPTED") {
+      dispatchWebhook(updated.organizationId, "quote.accepted", toApiNumbers(updated)).catch((err) =>
+        console.error("[webhooks] quote.accepted dispatch failed", err)
+      );
+    }
 
     res.json(toApiNumbers(updated));
   } catch (err) {

@@ -41,6 +41,21 @@ export default function PublicInvoicePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // Default to paying the deposit (pre-filled) rather than the full balance,
+  // when this invoice has one configured and nothing has been paid yet --
+  // but only once, on the invoice's first successful load. Guarded by a ref
+  // so a later refetch mid-payment-confirmation poll doesn't clobber
+  // whatever the customer has since chosen.
+  const depositDefaultApplied = useRef(false);
+  useEffect(() => {
+    if (!invoice || depositDefaultApplied.current) return;
+    depositDefaultApplied.current = true;
+    if (invoice.depositAmount != null && invoice.amountPaid === 0) {
+      setPayFull(false);
+      setCustomAmount(String(invoice.depositAmount));
+    }
+  }, [invoice]);
+
   useEffect(() => {
     if (searchParams.get("payment") === "success") {
       setConfirming(true);
@@ -95,6 +110,7 @@ export default function PublicInvoicePage() {
 
   const brandColor = invoice.organization.brandColor || "#4f46e5";
   const balanceDue = invoice.total - invoice.amountPaid;
+  const depositApplies = invoice.depositAmount != null && invoice.amountPaid === 0;
 
   const canPay = invoice.status !== "PAID" && invoice.status !== "CANCELLED" && balanceDue > 0;
 
@@ -213,15 +229,25 @@ export default function PublicInvoicePage() {
           </div>
         )}
 
+        {canPay && depositApplies && (
+          <p className="mt-6 text-sm text-fg-secondary">
+            Deposit due: <span className="font-semibold text-fg">{formatCurrency(invoice.depositAmount!, invoice.currency)}</span>
+            {" · "}Balance due after deposit:{" "}
+            <span className="font-semibold text-fg">
+              {formatCurrency(balanceDue - invoice.depositAmount!, invoice.currency)}
+            </span>
+          </p>
+        )}
+
         {canPay && (
-          <div className="mt-6 flex items-center gap-4 text-sm">
+          <div className="mt-3 flex items-center gap-4 text-sm">
             <label className="flex cursor-pointer items-center gap-1.5 text-fg-secondary">
               <input type="radio" checked={payFull} onChange={() => setPayFull(true)} />
               Pay in full
             </label>
             <label className="flex cursor-pointer items-center gap-1.5 text-fg-secondary">
               <input type="radio" checked={!payFull} onChange={() => setPayFull(false)} />
-              Pay a different amount
+              {depositApplies ? `Pay deposit (${formatCurrency(invoice.depositAmount!, invoice.currency)})` : "Pay a different amount"}
             </label>
             {!payFull && (
               <Input

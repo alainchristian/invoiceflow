@@ -16,6 +16,7 @@ import ForgotPassword from "@/pages/auth/ForgotPassword";
 import ResetPassword from "@/pages/auth/ResetPassword";
 import PublicInvoicePage from "@/pages/PublicInvoice";
 import PublicQuotePage from "@/pages/PublicQuote";
+import PublicCustomerPortal from "@/pages/PublicCustomerPortal";
 import Dashboard from "@/pages/app/Dashboard";
 import Analytics from "@/pages/app/Analytics";
 import Invoices from "@/pages/app/Invoices";
@@ -30,6 +31,7 @@ import Customers from "@/pages/app/Customers";
 import CustomerDetail from "@/pages/app/CustomerDetail";
 import Products from "@/pages/app/Products";
 import Payments from "@/pages/app/Payments";
+import TimeTracking from "@/pages/app/TimeTracking";
 import CreditNotes from "@/pages/app/CreditNotes";
 import CreditNoteForm from "@/pages/app/CreditNoteForm";
 import CreditNoteDetail from "@/pages/app/CreditNoteDetail";
@@ -37,6 +39,7 @@ import SettingsCompany from "@/pages/app/SettingsCompany";
 import SettingsTeam from "@/pages/app/SettingsTeam";
 import SettingsBilling from "@/pages/app/SettingsBilling";
 import SettingsStatements from "@/pages/app/SettingsStatements";
+import SettingsDeveloper from "@/pages/app/SettingsDeveloper";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import AdminTenants from "@/pages/admin/Tenants";
 import AdminTenantDetail from "@/pages/admin/TenantDetail";
@@ -68,6 +71,7 @@ export default function App() {
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/i/:token" element={<PublicInvoicePage />} />
                 <Route path="/q/:token" element={<PublicQuotePage />} />
+                <Route path="/portal/:token" element={<PublicCustomerPortal />} />
 
                 <Route
                   path="/app"
@@ -93,6 +97,7 @@ export default function App() {
                   <Route path="customers" element={<Customers />} />
                   <Route path="customers/:id" element={<CustomerDetail />} />
                   <Route path="products" element={<Products />} />
+                  <Route path="time-tracking" element={<TimeTracking />} />
                   <Route path="payments" element={<Payments />} />
                   <Route path="credit-notes" element={<CreditNotes />} />
                   <Route path="credit-notes/new" element={<CreditNoteForm />} />
@@ -102,6 +107,7 @@ export default function App() {
                   <Route path="settings/team" element={<SettingsTeam />} />
                   <Route path="settings/billing" element={<SettingsBilling />} />
                   <Route path="settings/statements" element={<SettingsStatements />} />
+                  <Route path="settings/developer" element={<SettingsDeveloper />} />
                 </Route>
 
                 <Route

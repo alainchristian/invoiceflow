@@ -3,7 +3,7 @@ import cors from "cors";
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import organizationsRoutes from "./modules/organizations/organizations.routes.js";
-import customersRoutes from "./modules/customers/customers.routes.js";
+import customersRoutes, { publicRouter as publicCustomersRoutes } from "./modules/customers/customers.routes.js";
 import productsRoutes from "./modules/products/products.routes.js";
 import invoicesRoutes, { publicRouter as publicInvoicesRoutes } from "./modules/invoices/invoices.routes.js";
 import dashboardRoutes from "./modules/dashboard/dashboard.routes.js";
@@ -16,6 +16,11 @@ import remindersRoutes from "./modules/reminders/reminders.routes.js";
 import billingRoutes from "./modules/billing/billing.routes.js";
 import creditNotesRoutes from "./modules/credit-notes/credit-notes.routes.js";
 import adminRoutes from "./modules/admin/admin.routes.js";
+import apiKeysRoutes from "./modules/api-keys/api-keys.routes.js";
+import webhookEndpointsRoutes from "./modules/webhooks/webhooks.routes.js";
+import apiV1CustomersRoutes from "./modules/api-v1/customers.routes.js";
+import apiV1InvoicesRoutes from "./modules/api-v1/invoices.routes.js";
+import timeEntriesRoutes from "./modules/time-entries/time-entries.routes.js";
 
 // Builds the Express app without starting it listening or starting the
 // background schedulers -- lets tests (supertest) exercise real routes/
@@ -47,6 +52,7 @@ export function createApp() {
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/payments", paymentsRoutes);
   app.use("/api/public/invoices", publicInvoicesRoutes);
+  app.use("/api/public/customers", publicCustomersRoutes);
   app.use("/api/quotes", quotesRoutes);
   app.use("/api/recurring-invoices", recurringInvoicesRoutes);
   app.use("/api/public/quotes", publicQuotesRoutes);
@@ -55,6 +61,11 @@ export function createApp() {
   app.use("/api/billing", billingRoutes);
   app.use("/api/credit-notes", creditNotesRoutes);
   app.use("/api/admin", adminRoutes);
+  app.use("/api/api-keys", apiKeysRoutes);
+  app.use("/api/webhook-endpoints", webhookEndpointsRoutes);
+  app.use("/api/v1/customers", apiV1CustomersRoutes);
+  app.use("/api/v1/invoices", apiV1InvoicesRoutes);
+  app.use("/api/time-entries", timeEntriesRoutes);
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);

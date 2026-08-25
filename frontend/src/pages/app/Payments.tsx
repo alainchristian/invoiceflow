@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { Wallet } from "lucide-react";
-import { usePayments } from "@/hooks/usePayments";
+import { Wallet, Download } from "lucide-react";
+import { usePayments, downloadPaymentsCsv } from "@/hooks/usePayments";
 import { PageHeader } from "@/components/layout/Topbar";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -22,7 +23,15 @@ export default function Payments() {
 
   return (
     <div>
-      <PageHeader title="Payments" subtitle="Every payment recorded against an invoice." />
+      <PageHeader
+        title="Payments"
+        subtitle="Every payment recorded against an invoice."
+        actions={
+          <Button variant="secondary" onClick={() => downloadPaymentsCsv()}>
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
+        }
+      />
 
       <Card>
         <CardContent className="p-0">

@@ -85,7 +85,7 @@ async function createScheduledInvoice(tx: Prisma.TransactionClient, schedule: Sc
     include: {
       customer: true,
       items: { orderBy: { sortOrder: "asc" } },
-      organization: { select: { name: true, brandColor: true } },
+      organization: { select: { name: true, brandColor: true, pdfTemplate: true } },
     },
   });
 }

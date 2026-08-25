@@ -4,6 +4,7 @@ import { Plus, Trash2, UserPlus } from "lucide-react";
 import { useCustomers } from "@/hooks/useCustomers";
 import { useInvoice, useCreateInvoice, useUpdateInvoice, type InvoiceFormItem } from "@/hooks/useInvoices";
 import { useProducts } from "@/hooks/useProducts";
+import { useUnbilledTimeEntries } from "@/hooks/useTimeEntries";
 import { PageHeader } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea } from "@/components/ui/Input";
@@ -37,8 +38,13 @@ export default function InvoiceForm() {
   const [terms, setTerms] = useState("");
   const [invoiceDiscountType, setInvoiceDiscountType] = useState<"FLAT" | "PERCENT">("FLAT");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState(0);
+  const [depositEnabled, setDepositEnabled] = useState(false);
+  const [depositType, setDepositType] = useState<"FLAT" | "PERCENT">("FLAT");
+  const [depositValue, setDepositValue] = useState(0);
   const [items, setItems] = useState<InvoiceFormItem[]>([{ ...emptyItem }]);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+
+  const { data: unbilledTimeEntries = [] } = useUnbilledTimeEntries(customerId || undefined);
 
   useEffect(() => {
     if (existingInvoice) {
@@ -51,6 +57,12 @@ export default function InvoiceForm() {
       setTerms(existingInvoice.terms || "");
       setInvoiceDiscountType(existingInvoice.invoiceDiscountType || "FLAT");
       setInvoiceDiscountValue(existingInvoice.invoiceDiscountValue || 0);
+      // Only the resolved flat dollar amount is persisted (a PERCENT choice
+      // is converted client-side before submit), so editing always shows it
+      // back as a flat amount rather than recovering the original percent.
+      setDepositEnabled(existingInvoice.depositAmount != null);
+      setDepositType("FLAT");
+      setDepositValue(existingInvoice.depositAmount ?? 0);
       setItems(
         existingInvoice.items.map((i) => ({
           description: i.description,
@@ -85,6 +97,18 @@ export default function InvoiceForm() {
     setItems((prev) => [...prev, { ...emptyItem }]);
   }
 
+  function addUnbilledTime() {
+    const newRows: InvoiceFormItem[] = unbilledTimeEntries.map((entry) => ({
+      description: entry.description,
+      quantity: Math.round((entry.minutes / 60) * 100) / 100,
+      unitPrice: entry.hourlyRate,
+      taxRate: 0,
+      discount: 0,
+      timeEntryId: entry.id,
+    }));
+    setItems((prev) => [...prev, ...newRows]);
+  }
+
   function removeItem(index: number) {
     setItems((prev) => prev.filter((_, i) => i !== index));
   }
@@ -94,6 +118,34 @@ export default function InvoiceForm() {
     if (!customerId || !dueDate || items.length === 0) {
       toast.error("Please select a customer, due date, and at least one item");
       return;
+    }
+
+    // Approximate, matching InvoicePreview's client-side total -- only used
+    // to resolve a PERCENT deposit into a flat dollar amount before submit;
+    // the server always recomputes the authoritative total independently.
+    let depositAmount: number | null = null;
+    if (depositEnabled && depositValue > 0) {
+      if (depositType === "FLAT") {
+        depositAmount = Number(depositValue);
+      } else {
+        const subtotal = items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
+        const discount = items.reduce((sum, i) => sum + (Number(i.discount) || 0), 0);
+        const taxTotal = items.reduce(
+          (sum, i) =>
+            sum +
+            ((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) - (Number(i.discount) || 0)) *
+              ((Number(i.taxRate) || 0) / 100),
+          0
+        );
+        const invoiceDiscountAmount =
+          invoiceDiscountValue > 0
+            ? invoiceDiscountType === "PERCENT"
+              ? subtotal * (invoiceDiscountValue / 100)
+              : invoiceDiscountValue
+            : 0;
+        const total = subtotal - discount + taxTotal - invoiceDiscountAmount;
+        depositAmount = Math.round(total * (depositValue / 100) * 100) / 100;
+      }
     }
 
     const payload = {
@@ -106,6 +158,7 @@ export default function InvoiceForm() {
       terms,
       invoiceDiscountType,
       invoiceDiscountValue: Number(invoiceDiscountValue || 0),
+      depositAmount,
       items: items.map((item) => ({
         ...item,
         quantity: Number(item.quantity),
@@ -200,13 +253,24 @@ export default function InvoiceForm() {
             <CardContent className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <Label className="mb-0">Line items</Label>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add row
-                </button>
+                <div className="flex items-center gap-3">
+                  {customerId && unbilledTimeEntries.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={addUnbilledTime}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add unbilled time ({unbilledTimeEntries.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add row
+                  </button>
+                </div>
               </div>
 
               {items.map((item, index) => (
@@ -300,6 +364,35 @@ export default function InvoiceForm() {
                   className="h-8 w-24 text-xs"
                   value={invoiceDiscountValue}
                   onChange={(e) => setInvoiceDiscountValue(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+                <label className="mb-0 flex items-center gap-1.5 whitespace-nowrap text-xs text-fg-muted">
+                  <input
+                    type="checkbox"
+                    checked={depositEnabled}
+                    onChange={(e) => setDepositEnabled(e.target.checked)}
+                  />
+                  Require deposit
+                </label>
+                <Select value={depositType} onValueChange={(v) => setDepositType(v as "FLAT" | "PERCENT")}>
+                  <SelectTrigger className="h-8 w-20 text-xs" disabled={!depositEnabled}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FLAT">$</SelectItem>
+                    <SelectItem value="PERCENT">%</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="h-8 w-24 text-xs"
+                  value={depositValue}
+                  onChange={(e) => setDepositValue(Number(e.target.value))}
+                  disabled={!depositEnabled}
                 />
               </div>
             </CardContent>

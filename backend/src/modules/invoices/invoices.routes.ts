@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/db.js";
 import { requireStripe, StripeNotConfiguredError, sendStripeNotConfigured } from "../../lib/stripe.js";
 import { requireAuth, requireOrgMember, requireRole, type AuthedRequest } from "../../middleware/auth.js";
@@ -12,6 +13,8 @@ import { assertInvoiceQuotaAvailable, QuotaExceededError } from "../billing/limi
 import { sendEmail } from "../../lib/email.js";
 import { invoiceEmail, paymentReminderEmail } from "../email/templates.js";
 import { toApiNumbers } from "../../lib/serialize.js";
+import { toCsv, sendCsv } from "../../lib/csv.js";
+import { dispatchWebhook } from "../../lib/webhook-dispatch.js";
 
 const router = Router();
 const publicRouter = Router();
@@ -22,7 +25,7 @@ const PUBLIC_INCLUDE = {
   customer: true,
   items: { orderBy: { sortOrder: "asc" as const } },
   organization: {
-    select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true },
+    select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true, pdfTemplate: true },
   },
 };
 
@@ -54,6 +57,60 @@ router.get("/", async (req: AuthedRequest, res, next) => {
   }
 });
 
+// Must be registered before GET /:id -- otherwise Express matches
+// "export.csv" as the :id param and this route is never reached.
+router.get("/export.csv", async (req: AuthedRequest, res, next) => {
+  try {
+    const { status, search } = req.query as Record<string, string>;
+    const where: any = { organizationId: req.organizationId };
+    if (status && STATUS_VALUES.includes(status as any)) where.status = status;
+    if (search) {
+      where.OR = [
+        { number: { contains: search, mode: "insensitive" } },
+        { customer: { name: { contains: search, mode: "insensitive" } } },
+      ];
+    }
+
+    const invoices = toApiNumbers(
+      await prisma.invoice.findMany({ where, include: INCLUDE, orderBy: { createdAt: "desc" }, take: 10000 })
+    );
+
+    const csv = toCsv(
+      [
+        { key: "number", header: "Number" },
+        { key: "customer", header: "Customer" },
+        { key: "status", header: "Status" },
+        { key: "issueDate", header: "Issue Date" },
+        { key: "dueDate", header: "Due Date" },
+        { key: "currency", header: "Currency" },
+        { key: "subtotal", header: "Subtotal" },
+        { key: "discount", header: "Discount" },
+        { key: "taxTotal", header: "Tax" },
+        { key: "total", header: "Total" },
+        { key: "amountPaid", header: "Amount Paid" },
+        { key: "balanceDue", header: "Balance Due" },
+      ],
+      invoices.map((inv: any) => ({
+        number: inv.number,
+        customer: inv.customer.name,
+        status: inv.status,
+        issueDate: inv.issueDate.toISOString().slice(0, 10),
+        dueDate: inv.dueDate.toISOString().slice(0, 10),
+        currency: inv.currency,
+        subtotal: inv.subtotal,
+        discount: inv.discount,
+        taxTotal: inv.taxTotal,
+        total: inv.total,
+        amountPaid: inv.amountPaid,
+        balanceDue: Math.round((inv.total - inv.amountPaid) * 100) / 100,
+      }))
+    );
+    sendCsv(res, "invoices", csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/:id", async (req: AuthedRequest, res, next) => {
   try {
     const invoice = await prisma.invoice.findFirst({
@@ -73,6 +130,7 @@ const lineItemSchema = z.object({
   unitPrice: z.number().min(0),
   taxRate: z.number().min(0).optional(),
   discount: z.number().min(0).optional(),
+  timeEntryId: z.string().optional(),
 });
 
 const invoiceSchema = z.object({
@@ -85,8 +143,31 @@ const invoiceSchema = z.object({
   terms: z.string().optional(),
   invoiceDiscountType: z.enum(["FLAT", "PERCENT"]).default("FLAT"),
   invoiceDiscountValue: z.number().min(0).default(0),
+  depositAmount: z.number().min(0).nullable().optional(),
   items: z.array(lineItemSchema).min(1),
 });
+
+// Input items and the just-created/updated InvoiceItem rows share the same
+// order (both keyed by sortOrder === array index), so we can zip them by
+// index to find which real InvoiceItem id each timeEntryId now belongs to.
+// updateMany (not update) so a stale/foreign/already-billed timeEntryId is a
+// silent no-op rather than a transaction-aborting error.
+async function linkBilledTimeEntries(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  inputItems: { timeEntryId?: string }[],
+  createdItems: { id: string }[]
+) {
+  await Promise.all(
+    inputItems.map((item, index) => {
+      if (!item.timeEntryId) return Promise.resolve();
+      return tx.timeEntry.updateMany({
+        where: { id: item.timeEntryId, organizationId, billed: false },
+        data: { billed: true, invoiceItemId: createdItems[index].id },
+      });
+    })
+  );
+}
 
 router.post("/", async (req: AuthedRequest, res, next) => {
   try {
@@ -115,7 +196,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
 
     const invoice = await prisma.$transaction(async (tx) => {
       const number = await nextInvoiceNumber(tx, req.organizationId as string);
-      return tx.invoice.create({
+      const created = await tx.invoice.create({
         data: {
           organizationId: req.organizationId as string,
           customerId: data.customerId,
@@ -130,6 +211,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
           discount: totals.discount,
           invoiceDiscountType: data.invoiceDiscountType,
           invoiceDiscountValue: data.invoiceDiscountValue,
+          depositAmount: data.depositAmount ?? null,
           taxTotal: totals.taxTotal,
           total: totals.total,
           items: {
@@ -146,6 +228,8 @@ router.post("/", async (req: AuthedRequest, res, next) => {
         },
         include: INCLUDE,
       });
+      await linkBilledTimeEntries(tx, req.organizationId as string, data.items, created.items);
+      return created;
     });
 
     res.status(201).json(toApiNumbers(invoice));
@@ -182,7 +266,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
 
     const invoice = await prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: existing.id } });
-      return tx.invoice.update({
+      const updated = await tx.invoice.update({
         where: { id: existing.id },
         data: {
           customerId: data.customerId,
@@ -196,6 +280,7 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
           discount: totals.discount,
           invoiceDiscountType: data.invoiceDiscountType,
           invoiceDiscountValue: data.invoiceDiscountValue,
+          depositAmount: data.depositAmount ?? null,
           taxTotal: totals.taxTotal,
           total: totals.total,
           items: {
@@ -212,6 +297,8 @@ router.put("/:id", async (req: AuthedRequest, res, next) => {
         },
         include: INCLUDE,
       });
+      await linkBilledTimeEntries(tx, req.organizationId as string, data.items, updated.items);
+      return updated;
     });
 
     res.json(toApiNumbers(invoice));
@@ -314,7 +401,11 @@ router.post("/:id/send", async (req: AuthedRequest, res, next) => {
     }
 
     const invoice = await prisma.invoice.update({ where: { id: existing.id }, data: { status: "SENT" } });
-    res.json(toApiNumbers(invoice));
+    const apiInvoice = toApiNumbers(invoice);
+    dispatchWebhook(req.organizationId as string, "invoice.sent", apiInvoice).catch((err) =>
+      console.error("[webhooks] invoice.sent dispatch failed", err)
+    );
+    res.json(apiInvoice);
   } catch (err) {
     next(err);
   }
@@ -377,6 +468,12 @@ router.patch("/:id/status", async (req: AuthedRequest, res, next) => {
         amountPaid: parsed.data.status === "PAID" ? existing.total : existing.amountPaid,
       },
     });
+    if (invoice.status === "PAID" && existing.status !== "PAID") {
+      const apiInvoice = toApiNumbers(invoice);
+      dispatchWebhook(req.organizationId as string, "invoice.paid", apiInvoice).catch((err) =>
+        console.error("[webhooks] invoice.paid dispatch failed", err)
+      );
+    }
     res.json(toApiNumbers(invoice));
   } catch (err) {
     next(err);
@@ -422,6 +519,11 @@ router.post("/:id/payments", async (req: AuthedRequest, res, next) => {
       }),
     ]);
 
+    if (invoice.status === "PAID" && existing.status !== "PAID") {
+      dispatchWebhook(req.organizationId as string, "invoice.paid", toApiNumbers(invoice)).catch((err) =>
+        console.error("[webhooks] invoice.paid dispatch failed", err)
+      );
+    }
     res.status(201).json(toApiNumbers({ payment, invoice }));
   } catch (err) {
     next(err);
@@ -588,8 +690,26 @@ publicRouter.post("/:token/checkout", async (req, res, next) => {
     if (amountProvided && requestedAmountRaw <= 0) {
       return res.status(400).json({ error: "Enter an amount between $0.01 and the balance due." });
     }
-    const isPartial = amountProvided;
-    const amount = isPartial ? round2(requestedAmountRaw) : balanceDue;
+
+    // When the customer hasn't picked an amount and this invoice has a
+    // configured deposit that hasn't been paid yet, default to the deposit
+    // instead of the full balance -- and treat it as a partial payment so
+    // the "pay in full" session-caching branch below is naturally skipped
+    // (a deposit session must never be reused for a later full-balance click).
+    const depositApplies = !amountProvided && invoice.depositAmount !== null && invoice.amountPaid.equals(0);
+    let amount: Decimal;
+    let isPartial: boolean;
+    if (amountProvided) {
+      amount = round2(requestedAmountRaw);
+      isPartial = true;
+    } else if (depositApplies) {
+      const deposit = round2(invoice.depositAmount as Decimal);
+      amount = deposit.greaterThan(balanceDue) ? balanceDue : deposit;
+      isPartial = true;
+    } else {
+      amount = balanceDue;
+      isPartial = false;
+    }
     if (amount.greaterThan(balanceDue)) {
       return res.status(400).json({ error: "Enter an amount between $0.01 and the balance due." });
     }

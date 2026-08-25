@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, UserPlus } from "lucide-react";
-import { useCustomers } from "@/hooks/useCustomers";
+import { Users, UserPlus, Download } from "lucide-react";
+import { useCustomers, downloadCustomersCsv } from "@/hooks/useCustomers";
 import { PageHeader } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -21,9 +21,14 @@ export default function Customers() {
         title="Customers"
         subtitle="Everyone you've ever invoiced, in one place."
         actions={
-          <Button onClick={() => setShowNew(true)}>
-            <UserPlus className="h-4 w-4" /> Add Customer
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => downloadCustomersCsv()}>
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
+            <Button onClick={() => setShowNew(true)}>
+              <UserPlus className="h-4 w-4" /> Add Customer
+            </Button>
+          </>
         }
       />
 

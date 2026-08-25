@@ -32,6 +32,7 @@ export interface InvoiceFormItem {
   unitPrice: number;
   taxRate?: number;
   discount?: number;
+  timeEntryId?: string;
 }
 
 export interface InvoiceFormValues {
@@ -44,6 +45,7 @@ export interface InvoiceFormValues {
   terms?: string;
   invoiceDiscountType?: "FLAT" | "PERCENT";
   invoiceDiscountValue?: number;
+  depositAmount?: number | null;
   items: InvoiceFormItem[];
 }
 
@@ -156,6 +158,16 @@ export async function downloadInvoicePdf(id: string, number: string) {
   const link = document.createElement("a");
   link.href = url;
   link.download = `invoice-${number}.pdf`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadInvoicesCsv(params: InvoiceListParams = {}) {
+  const response = await api.get("/invoices/export.csv", { params, responseType: "blob" });
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `invoices-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   window.URL.revokeObjectURL(url);
 }

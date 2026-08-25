@@ -22,6 +22,7 @@ interface OrgBranding {
   name: string;
   logoUrl: string | null;
   brandColor: string | null;
+  pdfTemplate?: string | null;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -141,6 +142,7 @@ export async function runDueStatements(now: Date = new Date()) {
       name: true,
       logoUrl: true,
       brandColor: true,
+      pdfTemplate: true,
       address: true,
       phone: true,
       email: true,

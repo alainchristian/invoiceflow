@@ -1,16 +1,20 @@
 import { useParams, Link } from "react-router-dom";
+import { Link2 } from "lucide-react";
 import { useCustomer } from "@/hooks/useCustomers";
 import { PageHeader } from "@/components/layout/Topbar";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
+import { useToast } from "@/components/ui/Toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Invoice } from "@/types";
 
 export default function CustomerDetail() {
   const { id } = useParams();
   const { data: customer, isLoading } = useCustomer(id);
+  const toast = useToast();
 
   if (isLoading || !customer) {
     return (
@@ -29,7 +33,22 @@ export default function CustomerDetail() {
 
   return (
     <div>
-      <PageHeader title={customer.name} subtitle={customer.company || customer.email} />
+      <PageHeader
+        title={customer.name}
+        subtitle={customer.company || customer.email}
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              navigator.clipboard.writeText(`${window.location.origin}/portal/${customer.portalToken}`);
+              toast.success("Portal link copied to clipboard");
+            }}
+          >
+            <Link2 className="h-4 w-4" /> Copy portal link
+          </Button>
+        }
+      />
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>

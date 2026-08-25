@@ -7,6 +7,7 @@ import { sendEmail } from "../../lib/email.js";
 import { platformMessageEmail } from "../email/templates.js";
 import { PLANS } from "../billing/plans.js";
 import { requireAuth, requirePlatformRole, type AuthedRequest } from "../../middleware/auth.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 
@@ -467,7 +468,7 @@ router.get("/organizations/:id", requirePlatformRole(), async (req, res, next) =
     const planDef = PLANS[organization.plan];
 
     res.json({
-      ...organization,
+      ...toApiNumbers(organization),
       status: deriveTenantStatus(organization),
       owner: owner ? { id: owner.user.id, name: owner.user.name, email: owner.user.email, joinedAt: owner.createdAt } : null,
       totalInvoiced: invoiceTotals._sum.total?.toNumber() ?? 0,

@@ -4,6 +4,7 @@ import { prisma } from "../../lib/db.js";
 import { slugify } from "../../lib/slug.js";
 import { requireAuth, requireOrgMember, requireRole, type AuthedRequest } from "../../middleware/auth.js";
 import { assertSeatAvailable, QuotaExceededError } from "../billing/limits.js";
+import { toApiNumbers } from "../../lib/serialize.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -29,7 +30,7 @@ router.post("/", async (req: AuthedRequest, res, next) => {
 router.get("/current", requireOrgMember, async (req: AuthedRequest, res, next) => {
   try {
     const organization = await prisma.organization.findUnique({ where: { id: req.organizationId } });
-    res.json(organization);
+    res.json(toApiNumbers(organization));
   } catch (err) {
     next(err);
   }
@@ -49,9 +50,14 @@ const updateOrgSchema = z.object({
   defaultTaxRate: z.number().optional(),
   defaultPaymentTerms: z.string().optional().nullable(),
   defaultNotes: z.string().optional().nullable(),
+  pdfTemplate: z.enum(["classic", "modern"]).optional(),
   statementsEnabled: z.boolean().optional(),
   statementFrequencyDays: z.number().int().min(1).optional(),
   statementRecipients: z.enum(["ALL", "OVERDUE_ONLY"]).optional(),
+  lateFeeEnabled: z.boolean().optional(),
+  lateFeeType: z.enum(["FLAT", "PERCENT"]).optional(),
+  lateFeeValue: z.number().min(0).optional(),
+  lateFeeGraceDays: z.number().int().min(0).optional(),
 });
 
 router.put(
@@ -81,7 +87,7 @@ router.put(
         where: { id: req.organizationId },
         data,
       });
-      res.json(organization);
+      res.json(toApiNumbers(organization));
     } catch (err) {
       next(err);
     }

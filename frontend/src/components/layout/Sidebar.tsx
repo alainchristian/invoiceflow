@@ -17,6 +17,8 @@ import {
   ChevronsRight,
   Shield,
   X,
+  Webhook,
+  Clock,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,7 @@ const mainLinks = [
   { to: "/app/recurring", label: "Recurring Invoices", icon: Repeat },
   { to: "/app/customers", label: "Customers", icon: Users },
   { to: "/app/products", label: "Products & Services", icon: Package },
+  { to: "/app/time-tracking", label: "Time Tracking", icon: Clock },
   { to: "/app/payments", label: "Payments", icon: Wallet },
   { to: "/app/credit-notes", label: "Credit Notes", icon: Receipt },
 ];
@@ -45,6 +48,7 @@ const settingsLinks = [
   { to: "/app/settings/team", label: "Team", icon: UsersRound },
   { to: "/app/settings/billing", label: "Billing & Subscription", icon: CreditCard },
   { to: "/app/settings/statements", label: "Customer Statements", icon: Mail },
+  { to: "/app/settings/developer", label: "Developer", icon: Webhook },
 ];
 
 function NavItem({

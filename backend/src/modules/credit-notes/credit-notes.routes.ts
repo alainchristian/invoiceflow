@@ -211,7 +211,9 @@ router.post("/:id/issue", async (req: AuthedRequest, res, next) => {
       include: {
         customer: true,
         items: { orderBy: { sortOrder: "asc" } },
-        organization: { select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true } },
+        organization: {
+          select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true, pdfTemplate: true },
+        },
       },
     });
     if (!existing) return res.status(404).json({ error: "Credit note not found" });
@@ -281,7 +283,9 @@ router.get("/:id/pdf", async (req: AuthedRequest, res) => {
       include: {
         customer: true,
         items: { orderBy: { sortOrder: "asc" } },
-        organization: { select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true } },
+        organization: {
+          select: { name: true, logoUrl: true, brandColor: true, address: true, phone: true, email: true, pdfTemplate: true },
+        },
       },
     });
     if (!creditNote) return res.status(404).json({ error: "Credit note not found" });

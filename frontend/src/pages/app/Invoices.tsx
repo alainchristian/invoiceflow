@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Search, FileText, MoreHorizontal, Copy, Send, CheckCircle2, Download, Ban } from "lucide-react";
-import { useInvoices, useDuplicateInvoice, useSendInvoice, useUpdateInvoiceStatus, downloadInvoicePdf } from "@/hooks/useInvoices";
+import {
+  useInvoices,
+  useDuplicateInvoice,
+  useSendInvoice,
+  useUpdateInvoiceStatus,
+  downloadInvoicePdf,
+  downloadInvoicesCsv,
+} from "@/hooks/useInvoices";
 import { PageHeader } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -57,6 +64,13 @@ export default function Invoices() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
           <Input placeholder="Search invoices..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => downloadInvoicesCsv({ status: status === "ALL" ? undefined : status, search: search || undefined })}
+        >
+          <Download className="h-4 w-4" /> Export CSV
+        </Button>
       </div>
 
       <Card>

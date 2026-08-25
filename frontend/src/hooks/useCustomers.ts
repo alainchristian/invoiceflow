@@ -41,3 +41,13 @@ export function useDeleteCustomer() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["customers"] }),
   });
 }
+
+export async function downloadCustomersCsv() {
+  const response = await api.get("/customers/export.csv", { responseType: "blob" });
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}

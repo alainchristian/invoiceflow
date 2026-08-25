@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/layout/Topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea } from "@/components/ui/Input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
+import { Switch } from "@/components/ui/Switch";
 import { useToast } from "@/components/ui/Toast";
 
 const MAX_LOGO_DIMENSION = 300;
@@ -52,6 +54,11 @@ export default function SettingsCompany() {
     defaultTaxRate: 0,
     defaultPaymentTerms: "",
     defaultNotes: "",
+    pdfTemplate: "classic" as "classic" | "modern",
+    lateFeeEnabled: false,
+    lateFeeType: "FLAT" as "FLAT" | "PERCENT",
+    lateFeeValue: 0,
+    lateFeeGraceDays: 0,
   });
 
   useEffect(() => {
@@ -70,6 +77,11 @@ export default function SettingsCompany() {
         defaultTaxRate: org.defaultTaxRate || 0,
         defaultPaymentTerms: org.defaultPaymentTerms || "",
         defaultNotes: org.defaultNotes || "",
+        pdfTemplate: org.pdfTemplate || "classic",
+        lateFeeEnabled: org.lateFeeEnabled ?? false,
+        lateFeeType: org.lateFeeType ?? "FLAT",
+        lateFeeValue: org.lateFeeValue ?? 0,
+        lateFeeGraceDays: org.lateFeeGraceDays ?? 0,
       });
     }
   }, [org]);
@@ -123,6 +135,50 @@ export default function SettingsCompany() {
                 onChange={(e) => setForm({ ...form, brandColor: e.target.value })}
                 className="h-9 w-16 rounded border border-border"
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Invoice template</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, pdfTemplate: "classic" })}
+                className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                  form.pdfTemplate === "classic" ? "border-brand-600" : "border-border hover:border-border-strong"
+                }`}
+              >
+                <div className="mb-2 rounded border border-border bg-surface-hover p-2">
+                  <div className="mb-1.5 h-2 w-10 rounded" style={{ backgroundColor: form.brandColor }} />
+                  <div className="mb-1 h-1 w-full rounded bg-border-strong" />
+                  <div className="mb-0.5 h-1 w-3/4 rounded bg-border" />
+                  <div className="h-1 w-2/3 rounded bg-border" />
+                </div>
+                <p className="text-sm font-medium text-fg">Classic</p>
+                <p className="text-xs text-fg-muted">Centered rule, shaded item rows</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, pdfTemplate: "modern" })}
+                className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                  form.pdfTemplate === "modern" ? "border-brand-600" : "border-border hover:border-border-strong"
+                }`}
+              >
+                <div className="mb-2 flex overflow-hidden rounded border border-border bg-surface-hover p-2">
+                  <div className="mr-2 w-1 shrink-0 rounded" style={{ backgroundColor: form.brandColor }} />
+                  <div className="flex-1">
+                    <div className="mb-1 h-1 w-full rounded bg-border-strong" />
+                    <div className="mb-0.5 h-1 w-3/4 rounded bg-border" />
+                    <div className="h-1 w-2/3 rounded bg-border" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-fg">Modern</p>
+                <p className="text-xs text-fg-muted">Accent bar, boxed totals panel</p>
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -200,6 +256,70 @@ export default function SettingsCompany() {
                 value={form.defaultNotes}
                 onChange={(e) => setForm({ ...form, defaultNotes: e.target.value })}
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Late fees</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div>
+                <Label className="mb-0">Charge a fee on overdue invoices</Label>
+                <p className="text-xs text-fg-muted">
+                  {form.lateFeeEnabled
+                    ? "A late fee line item is added automatically once an invoice has been overdue past the grace period."
+                    : "Overdue invoices will not be charged a late fee."}
+                </p>
+              </div>
+              <Switch
+                checked={form.lateFeeEnabled}
+                onCheckedChange={(checked) => setForm({ ...form, lateFeeEnabled: checked })}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="lateFeeType">Fee type</Label>
+                <Select
+                  value={form.lateFeeType}
+                  onValueChange={(v) => setForm({ ...form, lateFeeType: v as "FLAT" | "PERCENT" })}
+                >
+                  <SelectTrigger id="lateFeeType" disabled={!form.lateFeeEnabled}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FLAT">Flat amount ($)</SelectItem>
+                    <SelectItem value="PERCENT">Percent of subtotal (%)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="lateFeeValue">{form.lateFeeType === "PERCENT" ? "Fee (%)" : "Fee ($)"}</Label>
+                <Input
+                  id="lateFeeValue"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.lateFeeValue}
+                  onChange={(e) => setForm({ ...form, lateFeeValue: Number(e.target.value) })}
+                  disabled={!form.lateFeeEnabled}
+                />
+              </div>
+              <div>
+                <Label htmlFor="lateFeeGraceDays">Grace period (days)</Label>
+                <Input
+                  id="lateFeeGraceDays"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={form.lateFeeGraceDays}
+                  onChange={(e) => setForm({ ...form, lateFeeGraceDays: Number(e.target.value) })}
+                  disabled={!form.lateFeeEnabled}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

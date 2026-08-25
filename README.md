@@ -152,6 +152,28 @@ npm run dev              # http://localhost:5173
 - Every query and mutation is scoped through `requireOrgMember`, which
   verifies real membership server-side — a user can never read or write
   another organization's data by guessing an ID or forging a header
+- CSV export for invoices (respects the current status/search filter),
+  customers, and payments (`GET /api/{invoices,customers,payments}/export.csv`)
+- No-login client portal per customer (`/portal/:portalToken`, "Copy portal
+  link" on the customer page) listing all their non-draft invoices and quotes
+  in one place
+- Configurable late fees (flat $ or %, with a grace period) auto-applied as a
+  line item once an invoice has been overdue past the grace period, checked
+  hourly alongside the existing overdue-status scheduler
+- Optional deposit (flat $ or %) on an invoice — the public payment page
+  defaults to "pay deposit" instead of full balance until it's been paid
+- Outbound developer API: revocable `X-Api-Key` keys (one-time reveal on
+  creation) authenticate a v1 REST API (`/api/v1/{customers,invoices}`,
+  read + create); outbound webhooks (`invoice.sent`, `invoice.paid`,
+  `quote.accepted`) delivered with a Stripe-style HMAC-SHA256 signature
+  header, managed from Settings → Developer
+- Two invoice/quote PDF templates ("Classic" and "Modern"), switchable per
+  organization from Settings → Company; the live split-screen preview
+  matches the PDF layout for whichever template is active
+- Time tracking: log billable hours per customer, then pull unbilled entries
+  straight into an invoice as priced line items with one click (entries are
+  locked once billed and unlinked, not un-billed, if that invoice is later
+  edited)
 
 ## Next steps
 
@@ -162,8 +184,8 @@ npm run dev              # http://localhost:5173
   checkout — it's currently a read-only "view and download" page)
 - Stripe Billing for InvoiceFlow's own subscription plans (the pricing page
   and Billing settings tab are UI-only right now)
-- Reports/analytics beyond the dashboard (CSV/PDF export, per-customer and
-  per-product revenue breakdowns)
+- Reports/analytics beyond the dashboard (per-customer and per-product
+  revenue breakdowns)
 - File storage abstraction (S3/R2/Supabase) for logos and PDFs instead of
   inline data URLs and on-the-fly generation
 - Email delivery abstraction (Resend/SendGrid/SES) for actually sending
